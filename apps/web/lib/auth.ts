@@ -101,17 +101,17 @@ export async function getSession(request: Request): Promise<AuthSession | null> 
 
 export async function requireSession(request: Request): Promise<AuthSession> {
   const session = await getSession(request);
-  if (!session) throw new HttpError(401, "로그인이 필요합니다.");
+  if (!session) throw new HttpError(401, "로그인이 필요해요");
   return session;
 }
 
 export async function requireCsrf(request: Request, session: AuthSession): Promise<void> {
   const env = getServerEnv();
   const origin = request.headers.get("origin");
-  if (origin !== new URL(env.APP_URL).origin) throw new HttpError(403, "요청 출처를 확인할 수 없습니다.");
+  if (origin !== new URL(env.APP_URL).origin) throw new HttpError(403, "요청 출처를 확인할 수 없어요");
   const csrf = request.headers.get("x-csrf-token");
   const cookieCsrf = parseCookies(request.headers.get("cookie"))[CSRF_COOKIE];
-  if (!csrf || !cookieCsrf || csrf !== cookieCsrf || sha256(csrf) !== session.csrfHash) throw new HttpError(403, "보안 토큰이 만료됐습니다.");
+  if (!csrf || !cookieCsrf || csrf !== cookieCsrf || sha256(csrf) !== session.csrfHash) throw new HttpError(403, "보안 토큰이 만료됐어요");
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {

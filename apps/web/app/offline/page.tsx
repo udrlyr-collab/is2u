@@ -1,2 +1,1 @@
-export default function OfflinePage() { return <main className="login-shell"><section className="login-card"><h1>잠시 연결이 없어요.</h1><p className="muted">인터넷이 다시 연결되면 조용히 이어서 사용할 수 있어요.</p></section></main>; }
-
+export default function OfflinePage() { return <main className="login-shell"><section className="login-card"><h1>잠시 연결이 없어요</h1><p className="muted">인터넷이 다시 연결되면 조용히 이어서 사용할 수 있어요</p></section></main>; }

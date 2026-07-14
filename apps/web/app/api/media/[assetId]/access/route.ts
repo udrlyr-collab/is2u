@@ -12,7 +12,7 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   const session = await requireSession(request);
   const { assetId } = await context.params;
   const [asset] = await getDb().select().from(mediaAssets).where(and(eq(mediaAssets.id, assetId), ne(mediaAssets.role, "original"), eq(mediaAssets.processingStatus, "ready"))).limit(1);
-  if (!asset || asset.role === "original") throw new HttpError(404, "미디어를 찾을 수 없습니다.");
+  if (!asset || asset.role === "original") throw new HttpError(404, "미디어를 찾을 수 없어요");
   const env = getServerEnv();
   const token = signMediaToken({
     assetId: asset.id,
@@ -24,4 +24,3 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   }, env.MEDIA_TOKEN_SECRET);
   return json({ url: `${env.MEDIA_URL}/v1/${asset.id}?token=${encodeURIComponent(token)}`, expiresIn: 300 });
 });
-

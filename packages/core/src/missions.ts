@@ -72,6 +72,37 @@ export function chooseMissionTime(
   return intervals.at(-1)!.end!.toUTC().toJSDate();
 }
 
+export function chooseMissionTimeInRange(
+  start: Date,
+  end: Date,
+  baseline: Date,
+  minMinutes: number,
+  maxMinutes: number,
+  options: MissionWindowOptions = {},
+  random = Math.random,
+): Date | null {
+  if (minMinutes > maxMinutes) return null;
+  const zone = options.timezone ?? "Asia/Seoul";
+  const lower = DateTime.fromJSDate(baseline, { zone: "utc" }).plus({ minutes: minMinutes });
+  const upper = DateTime.fromJSDate(baseline, { zone: "utc" }).plus({ minutes: maxMinutes });
+  const notBefore = options.notBefore ? DateTime.fromJSDate(options.notBefore, { zone: "utc" }) : lower;
+  const rangeStart = DateTime.max(lower, notBefore);
+  if (upper < rangeStart) return null;
+  const range = Interval.fromDateTimes(rangeStart.setZone(zone), upper.setZone(zone).plus({ milliseconds: 1 }));
+  const candidates = allowedMissionIntervals(start, end, { ...options, delayMinutes: 20 })
+    .map((interval) => interval.intersection(range))
+    .filter((interval): interval is Interval<true> => Boolean(interval?.isValid && interval.length("milliseconds") > 0));
+  const total = candidates.reduce((sum, interval) => sum + interval.length("milliseconds"), 0);
+  if (total <= 0) return null;
+  let offset = random() * total;
+  for (const interval of candidates) {
+    const length = interval.length("milliseconds");
+    if (offset <= length) return interval.start.plus({ milliseconds: offset }).toUTC().toJSDate();
+    offset -= length;
+  }
+  return candidates.at(-1)!.end.toUTC().toJSDate();
+}
+
 export function chooseMissionType(previous: MissionType | null, random = Math.random): MissionType {
   const candidates = previous ? MISSION_TYPES.filter((type) => type !== previous) : [...MISSION_TYPES];
   return candidates[Math.floor(random() * candidates.length)] ?? candidates[0];
@@ -111,7 +142,7 @@ export function chooseMissionTemplate(
   return candidates.at(-1)!;
 }
 
-export const TEST_MISSION_CATEGORIES = ["video", "photo", "text"] as const;
+export const TEST_MISSION_CATEGORIES = ["video", "photo", "text", "audio", "emotion"] as const;
 export type TestMissionCategory = typeof TEST_MISSION_CATEGORIES[number];
 
 export function chooseTestMissionTemplate(
@@ -148,5 +179,13 @@ export function seoulWeekBounds(at: Date): { start: Date; end: Date } {
   return {
     start: local.startOf("week").toUTC().toJSDate(),
     end: local.endOf("week").toUTC().toJSDate(),
+  };
+}
+
+export function seoulDayBounds(at: Date): { start: Date; end: Date } {
+  const local = DateTime.fromJSDate(at, { zone: "utc" }).setZone("Asia/Seoul");
+  return {
+    start: local.startOf("day").toUTC().toJSDate(),
+    end: local.endOf("day").plus({ milliseconds: 1 }).toUTC().toJSDate(),
   };
 }

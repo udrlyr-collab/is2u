@@ -19,7 +19,7 @@ export function SiteHeader({ name }: { name: string }) {
   const pathname = usePathname();
   return <>
     <header className="site-header">
-      <Link href="/home" className="wordmark" data-paper-sound="page-close" aria-label="그대로 멈춰라, 추억으로 이동">그대로 멈춰라</Link>
+      <Link href="/home" className="wordmark" aria-label="그대로 멈춰라, 추억으로 이동">그대로 멈춰라</Link>
       <span className="header-note" aria-hidden="true">둘만의 보관함</span>
       <span className="visually-hidden">{name}님으로 로그인됨</span>
     </header>
@@ -27,7 +27,7 @@ export function SiteHeader({ name }: { name: string }) {
       <span className="dock-tape" aria-hidden="true" />
       {tabs.map((tab) => {
         const active = tab.href === "/home" ? pathname === "/home" : pathname.startsWith(tab.href) || (tab.href === "/calendar" && pathname.startsWith("/dates/"));
-        return <Link key={tab.href} href={tab.href} data-paper-sound="paper-tap" className={active ? "active" : ""} aria-current={active ? "page" : undefined}>
+        return <Link key={tab.href} href={tab.href} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>
           <TabIcon name={tab.icon} />
           <span>{tab.label}</span>
         </Link>;

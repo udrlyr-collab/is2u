@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { EMOTIONS, MEMORY_TYPES } from "./types";
 
+const unsafeUserText = /[<>\u0000-\u001f\u007f]|(?:javascript:|data:text|<\/?script\b)/iu;
+
+export const memoryTitleSchema = z.string().trim().max(30).superRefine((value, context) => {
+  if (unsafeUserText.test(value)) context.addIssue({ code: "custom", message: "제목에는 일반 문자만 입력해 주세요" });
+}).transform((value) => value || null);
+
 export const loginSchema = z.object({ pin: z.string().regex(/^\d{4}$/) });
 
 export const dateEventSchema = z.object({
@@ -8,7 +14,7 @@ export const dateEventSchema = z.object({
   endAt: z.coerce.date(),
   title: z.string().trim().max(80).optional().nullable(),
   note: z.string().trim().max(500).optional().nullable(),
-}).refine((value) => value.endAt > value.startAt, { message: "종료 시간은 시작 시간보다 늦어야 합니다." });
+}).refine((value) => value.endAt > value.startAt, { message: "종료 시간은 시작 시간보다 늦어야 해요" });
 
 export const dateEventCreateSchema = z.object({
   startAt: z.coerce.date(),
@@ -16,11 +22,11 @@ export const dateEventCreateSchema = z.object({
   title: z.string().trim().max(80).optional().nullable(),
   note: z.string().trim().max(500).optional().nullable(),
   clientRequestId: z.uuid(),
-}).refine((value) => value.endAt > value.startAt, { message: "종료 시간은 시작 시간보다 늦어야 합니다." });
+}).refine((value) => value.endAt > value.startAt, { message: "종료 시간은 시작 시간보다 늦어야 해요" });
 
 const customEmotionSchema = z.string().trim().min(1).max(30).superRefine((value, context) => {
   if (/[<>\u0000-\u001f\u007f]/u.test(value) || /(?:javascript:|data:text|https?:\/\/|cannot read|stack trace|<\/?[a-z])/iu.test(value)) {
-    context.addIssue({ code: "custom", message: "마음은 자연스러운 한 문장으로 남겨주세요." });
+    context.addIssue({ code: "custom", message: "마음은 자연스러운 한 문장으로 남겨주세요" });
   }
 });
 
@@ -29,17 +35,41 @@ export const missionCompletionSchema = z.object({
   text: z.string().trim().max(300).optional(),
   emotionId: z.string().trim().max(50).optional(),
   customEmotion: customEmotionSchema.optional(),
+  customTitle: memoryTitleSchema.optional(),
   idempotencyKey: z.uuid(),
   replaceExisting: z.boolean().optional().default(false),
   deferReplacement: z.boolean().optional().default(false),
 }).superRefine((value, context) => {
-  if (value.memoryType === "text" && !value.text) context.addIssue({ code: "custom", message: "한 문장을 입력해 주세요." });
+  if (value.memoryType === "text" && !value.text) context.addIssue({ code: "custom", message: "한 문장을 입력해 주세요" });
   if (value.memoryType === "emotion") {
     const hasKnownEmotion = Boolean(value.emotionId && EMOTIONS.some((item) => item.enabled && item.id === value.emotionId));
     const hasCustomEmotion = Boolean(value.customEmotion);
-    if (hasKnownEmotion === hasCustomEmotion) context.addIssue({ code: "custom", message: "기본 감정이나 직접 적은 마음 중 하나를 골라 주세요." });
+    if (hasKnownEmotion === hasCustomEmotion) context.addIssue({ code: "custom", message: "기본 감정이나 직접 적은 마음 중 하나를 골라 주세요" });
   }
 });
+
+export const manualMemoryCreateSchema = z.object({
+  type: z.enum(["photo", "video", "audio", "text"]),
+  customTitle: memoryTitleSchema.optional(),
+  text: z.string().trim().max(300).optional().nullable(),
+  dateEventId: z.uuid().optional().nullable(),
+  idempotencyKey: z.uuid(),
+}).superRefine((value, context) => {
+  if (value.type === "text" && !value.text) context.addIssue({ code: "custom", message: "남길 글을 입력해 주세요" });
+  if (value.text && unsafeUserText.test(value.text)) context.addIssue({ code: "custom", message: "내용에는 일반 문자만 입력해 주세요" });
+});
+
+export const memoryEditSchema = z.object({
+  customTitle: memoryTitleSchema.optional(),
+  text: z.string().trim().max(300).optional().nullable(),
+}).superRefine((value, context) => {
+  if (value.text && unsafeUserText.test(value.text)) context.addIssue({ code: "custom", message: "내용에는 일반 문자만 입력해 주세요" });
+});
+
+export const coupleMissionIntervalSchema = z.object({
+  minMinutes: z.number().int().min(20).max(240),
+  maxMinutes: z.number().int().min(20).max(240),
+}).refine((value) => value.minMinutes <= value.maxMinutes, { message: "최소 간격은 최대 간격보다 클 수 없어요" });
 
 export function resolveEmotion(input: { emotionId?: string; customEmotion?: string }): string | null {
   if (input.customEmotion) return input.customEmotion;

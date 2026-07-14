@@ -11,11 +11,10 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   await requireCsrf(request, session);
   const { id } = await context.params;
   const [mission] = await getDb().select().from(missions).where(and(eq(missions.id, id), eq(missions.recipientId, session.user.id))).limit(1);
-  if (!mission) throw new HttpError(404, "미션을 찾을 수 없습니다.");
+  if (!mission) throw new HttpError(404, "미션을 찾을 수 없어요");
   if (mission.status === "sent") {
     await getDb().update(missions).set({ status: "skipped", updatedAt: new Date() }).where(eq(missions.id, id));
     await getDb().insert(auditEvents).values({ actorId: session.user.id, action: "mission.skipped", entityType: "mission", entityId: id });
   }
   return json({ ok: true });
 });
-

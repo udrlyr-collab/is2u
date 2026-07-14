@@ -23,10 +23,10 @@ function putWithProgress(url: string, body: Blob, onProgress: (loaded: number) =
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
     xhr.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(event.loaded); };
-    xhr.onerror = () => reject(new Error("네트워크 연결이 끊겼습니다."));
+    xhr.onerror = () => reject(new Error("네트워크 연결이 끊겼어요"));
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.getResponseHeader("ETag") ?? "");
-      else reject(new Error(`업로드에 실패했습니다. (${xhr.status})`));
+      else reject(new Error(`업로드하지 못했어요 (${xhr.status})`));
     };
     xhr.send(body);
   });
@@ -52,7 +52,7 @@ export async function uploadFile(memoryId: string, file: File, onProgress: (perc
   }
 
   if (!state.upload.multipart) {
-    if (!state.upload.url) throw new Error("업로드 주소가 없습니다.");
+    if (!state.upload.url) throw new Error("업로드 주소가 없어요");
     await putWithProgress(state.upload.url, file, (loaded) => onProgress(Math.round((loaded / file.size) * 100)));
   } else {
     const count = Math.ceil(file.size / state.upload.partSize);
@@ -80,4 +80,3 @@ export async function uploadFile(memoryId: string, file: File, onProgress: (perc
   onProgress(100);
   return completed.asset.id;
 }
-

@@ -14,7 +14,6 @@ export async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<
   }
   const response = await fetch(url, { ...init, headers, credentials: "same-origin", cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? "요청을 완료하지 못했습니다.");
+  if (!response.ok) throw new Error(payload.error ?? "요청을 완료하지 못했어요");
   return payload as T;
 }
-

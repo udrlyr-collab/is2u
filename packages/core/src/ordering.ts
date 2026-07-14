@@ -70,6 +70,10 @@ export function appointmentView(item: CalendarOrderItem, now = new Date()): Appo
 }
 
 export function compareAppointmentEvents(a: CalendarOrderItem, b: CalendarOrderItem, view: AppointmentView): number {
-  if (view === "upcoming") return milliseconds(b.startAt) - milliseconds(a.startAt);
+  if (view === "upcoming") return milliseconds(a.startAt) - milliseconds(b.startAt);
   return milliseconds(b.endAt) - milliseconds(a.endAt);
+}
+
+export function compareAppointmentDayKeys(a: string, b: string, view: AppointmentView): number {
+  return view === "upcoming" ? a.localeCompare(b) : b.localeCompare(a);
 }

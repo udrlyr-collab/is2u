@@ -11,7 +11,7 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   await requireSession(request);
   const { id } = await context.params;
   const [row] = await getDb().select({ asset: mediaAssets }).from(mediaAssets).innerJoin(memories, eq(mediaAssets.memoryId, memories.id)).where(and(eq(memories.id, id), isNull(memories.deletedAt), eq(mediaAssets.role, "original"))).limit(1);
-  if (!row) throw new HttpError(404, "원본을 찾을 수 없습니다.");
+  if (!row) throw new HttpError(404, "원본을 찾을 수 없어요");
   const url = await createOriginalDownload(row.asset.storageKey, row.asset.originalFilename ?? "original");
   return json({ url, expiresIn: 300 });
 });

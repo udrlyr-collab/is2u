@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedMissionIntervals, canCreateActualMission, canDeliverActualMission, chooseMissionTemplate, chooseMissionTime, chooseMissionType, chooseRecipient, chooseTestMissionTemplate, seoulWeekBounds } from "@is2u/core/missions";
+import { allowedMissionIntervals, canCreateActualMission, canDeliverActualMission, chooseMissionTemplate, chooseMissionTime, chooseMissionTimeInRange, chooseMissionType, chooseRecipient, chooseTestMissionTemplate, seoulWeekBounds } from "@is2u/core/missions";
 import { ACTIVE_MISSION_TEMPLATES, LEGACY_MISSION_TEMPLATES, MISSION_TYPE_WEIGHTS, getMissionTemplate } from "@is2u/core/types";
 
 describe("mission scheduling", () => {
@@ -48,6 +48,19 @@ describe("mission scheduling", () => {
     expect(chosen?.toISOString()).toBe("2026-07-18T04:10:00.000Z");
   });
 
+  it("chooses the next mission within the shared minimum and maximum interval", () => {
+    const chosen = chooseMissionTimeInRange(
+      new Date("2026-07-18T03:00:00.000Z"),
+      new Date("2026-07-18T07:00:00.000Z"),
+      new Date("2026-07-18T03:20:00.000Z"),
+      40,
+      90,
+      {},
+      () => 0.5,
+    );
+    expect(chosen?.toISOString()).toBe("2026-07-18T04:25:00.000Z");
+  });
+
   it("never immediately repeats a mission type", () => {
     for (let index = 0; index < 20; index += 1) expect(chooseMissionType("photo", () => index / 20)).not.toBe("photo");
   });
@@ -90,9 +103,11 @@ describe("mission scheduling", () => {
     expect(MISSION_TYPE_WEIGHTS).toEqual({ audio: 0.2, photo: 0.2, video: 0.1, text: 0.3, emotion: 0.2 });
   });
 
-  it("derives test missions from active video, photo, and text templates", () => {
+  it("derives mission checks from all five active categories", () => {
     expect(chooseTestMissionTemplate("video", null, () => 0).id).toBe("video-brief-movement");
     expect(chooseTestMissionTemplate("photo", "photo-us-now", () => 0).prompt).toBe("지금 둘의 순간을 자유롭게 남겨주세요.");
+    expect(chooseTestMissionTemplate("audio", null, () => 0).id).toBe("audio-current-sound");
+    expect(chooseTestMissionTemplate("emotion", null, () => 0).id).toBe("emotion-current-heart");
     expect(chooseTestMissionTemplate(null, null, () => 0).type).toBe("video");
   });
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { userFacingSentence } from "@is2u/core/types";
 import { Button, Field, InlineNotice, Select } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
 import { apiFetch } from "../../../lib/client";
@@ -20,7 +21,7 @@ type TestMission = {
 };
 type TestTemplate = {
   id: string;
-  category: "video" | "photo" | "text";
+  category: "video" | "photo" | "text" | "audio" | "emotion";
   title: string;
   prompt: string;
   enabled: boolean;
@@ -32,6 +33,8 @@ const categories = [
   { id: "video", label: "영상", mark: "▷" },
   { id: "photo", label: "사진", mark: "▧" },
   { id: "text", label: "한 줄 기록", mark: "—" },
+  { id: "audio", label: "음성", mark: "⌁" },
+  { id: "emotion", label: "감정·선택", mark: "♡" },
 ] as const;
 type Category = typeof categories[number]["id"];
 
@@ -52,7 +55,7 @@ export function MissionTestPanel() {
       setMissions(result.missions);
       setTemplates(result.templates);
     } catch {
-      setMessage("테스트 미션 상태를 불러오지 못했어요.");
+      setMessage("미션 상태를 불러오지 못했어요");
     }
   }, []);
 
@@ -71,46 +74,46 @@ export function MissionTestPanel() {
       setMessage(success);
       await refresh();
     } catch {
-      setMessage("테스트 작업을 완료하지 못했어요.");
+      setMessage("요청한 작업을 완료하지 못했어요");
     } finally {
       setBusy(false);
     }
   }
 
-  return <section id="mission-test" className="mission-test-panel" aria-label="개발자 미션 테스트">
+  return <section id="mission-test" className="mission-test-panel" aria-label="개발자 미션 확인 도구">
     <p className="paper-label">DEVELOPER NOTE</p>
-    <h2>미션 테스트</h2>
-    <p className="muted">실제 미션과 같은 저장·업로드·처리 흐름을 사용하며 만든 즉시 추억 타임라인에도 표시돼요.</p>
+    <h2>미션 확인 도구</h2>
+    <p className="muted">실제 미션과 같은 흐름으로 미션을 만들고 확인할 수 있어요</p>
     <div className="mission-test-controls">
       <Field label="받는 사람"><Select value={recipient} onChange={(event) => setRecipient(event.target.value)}><option value="random">무작위</option><option value="seongmin">홍성민</option><option value="seoyeong">이서영</option></Select></Field>
       <Field label="보내는 때"><Select value={delay} onChange={(event) => setDelay(event.target.value)}><option value="now">즉시</option><option value="one-minute">1분 뒤</option></Select></Field>
     </div>
-    <fieldset className="test-template-fieldset"><legend>미션 종류</legend><div className="test-category-tabs" role="radiogroup" aria-label="테스트 미션 종류">{categories.map((item) => <button key={item.id} type="button" role="radio" aria-checked={category === item.id} className={category === item.id ? "selected" : ""} data-paper-sound="note-stick" onClick={() => { setCategory(item.id); setTemplateId("random"); }}><span aria-hidden="true">{item.mark}</span>{item.label}<i aria-hidden="true">✓</i></button>)}</div></fieldset>
-    <fieldset className="test-template-fieldset"><legend>세부 미션</legend><div className="test-template-notes" role="radiogroup" aria-label="세부 테스트 미션"><button type="button" role="radio" aria-checked={templateId === "random"} className={templateId === "random" ? "selected" : ""} data-paper-sound="note-stick" onClick={() => setTemplateId("random")}><strong><span aria-hidden="true">✦</span> 무작위</strong><small>{category === "random" ? "세 종류와 세부 미션을 모두 무작위로 골라요." : "선택한 종류 안에서 하나를 골라요."}</small><i aria-hidden="true">✓</i></button>{category !== "random" && templates.filter((template) => template.category === category && template.enabled).map((template) => <button type="button" role="radio" aria-checked={templateId === template.id} className={templateId === template.id ? "selected" : ""} key={template.id} data-paper-sound="note-stick" onClick={() => setTemplateId(template.id)}><strong>{template.title}</strong><small>{template.prompt}</small><i aria-hidden="true">✓</i></button>)}</div></fieldset>
-    <div className="form-actions"><Button disabled={busy} data-paper-sound="save-soft" onClick={() => void action({ action: "create", recipient, category, templateId, delay }, "테스트 미션을 만들었어요.")}>테스트 미션 생성</Button></div>
+    <fieldset className="test-template-fieldset"><legend>미션 종류</legend><div className="test-category-tabs" role="radiogroup" aria-label="미션 종류">{categories.map((item) => <button key={item.id} type="button" role="radio" aria-checked={category === item.id} className={category === item.id ? "selected" : ""} onClick={() => { setCategory(item.id); setTemplateId("random"); }}><span aria-hidden="true">{item.mark}</span>{item.label}<i aria-hidden="true">✓</i></button>)}</div></fieldset>
+    <fieldset className="test-template-fieldset"><legend>세부 미션</legend><div className="test-template-notes" role="radiogroup" aria-label="세부 미션"><button type="button" role="radio" aria-checked={templateId === "random"} className={templateId === "random" ? "selected" : ""} onClick={() => setTemplateId("random")}><strong><span aria-hidden="true">✦</span> 무작위</strong><small>{category === "random" ? "다섯 종류의 전체 미션에서 하나를 골라요" : "선택한 종류 안에서 하나를 골라요"}</small><i aria-hidden="true">✓</i></button>{category !== "random" && templates.filter((template) => template.category === category && template.enabled).map((template) => <button type="button" role="radio" aria-checked={templateId === template.id} className={templateId === template.id ? "selected" : ""} key={template.id} onClick={() => setTemplateId(template.id)}><strong>{template.title}</strong><small>{template.prompt.replace(/\.$/u, "")}</small><i aria-hidden="true">✓</i></button>)}</div></fieldset>
+    <div className="form-actions"><Button disabled={busy} onClick={() => void action({ action: "create", recipient, category, templateId, delay }, "미션을 만들었어요")}>미션 만들기</Button></div>
     {message && <InlineNotice>{message}</InlineNotice>}
 
     <div className="test-mission-list">
-      {missions.length === 0 && <p className="muted">현재 테스트 미션이 없어요.</p>}
+      {missions.length === 0 && <p className="muted">이 도구에서 만든 미션이 없어요</p>}
       {missions.map((mission) => {
         const original = mission.memory?.assets.find((asset) => asset.role === "original");
         const preview = mission.memory?.assets.find((asset) => asset.role === "preview");
         return <article className="test-mission-item" key={mission.id}>
           <header><strong>{mission.copy.title}</strong><span className="status-label">{statusText[mission.status] ?? mission.status}</span></header>
-          <p className="test-mission-prompt">{mission.copy.prompt}</p>
+          <p className="test-mission-prompt">{userFacingSentence(mission.copy.prompt)}</p>
           <p>수신자 {mission.recipientName} · {new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(mission.scheduledAt))}</p>
           {mission.memory && <p>기억 {mission.memory.type} · 원본 {original?.processingStatus ?? "없음"} · 미리보기 {preview?.processingStatus ?? "준비 중"}</p>}
           <div className="test-actions">
             {mission.canOpen && mission.status === "sent" && <Link className="button button-secondary" href={`/missions/${mission.id}`}>미션 열기</Link>}
             {mission.canOpen && mission.status === "completed" && <Link className="button button-secondary" href={`/missions/${mission.id}`}>완료 기록 보기</Link>}
-            {!mission.canOpen && mission.status === "sent" && <span className="muted">수신자 계정에서 열 수 있어요.</span>}
-            {!['expired', 'completed'].includes(mission.status) && <Button variant="quiet" disabled={busy} onClick={() => void action({ action: "expire", missionId: mission.id }, "미션을 만료했어요.")}>만료 처리</Button>}
-            <Button variant="danger" disabled={busy} onClick={() => void action({ action: "delete", missionId: mission.id }, "테스트 미션과 파일을 삭제했어요.")}>삭제</Button>
+            {!mission.canOpen && mission.status === "sent" && <span className="muted">수신자 계정에서 열 수 있어요</span>}
+            {!['expired', 'completed'].includes(mission.status) && <Button variant="quiet" disabled={busy} onClick={() => void action({ action: "expire", missionId: mission.id }, "미션을 만료했어요")}>만료 처리</Button>}
+            <Button variant="danger" disabled={busy} onClick={() => void action({ action: "delete", missionId: mission.id }, "미션과 파일을 지웠어요")}>삭제</Button>
           </div>
         </article>;
       })}
     </div>
-    {missions.length > 0 && <div className="test-footer-actions"><Link className="button button-sticker button-regular" data-paper-sound="page-open" href="/home">추억에서 미션 보기</Link><Button variant="danger" disabled={busy} data-paper-sound="note-peel" onClick={() => setConfirmReset(true)}>테스트 데이터 전체 삭제</Button></div>}
-    {confirmReset && <PaperConfirmDialog title="모든 테스트 데이터를 삭제할까요?" description="테스트 미션과 연결된 테스트 파일만 영구 삭제해요. 실제 미션과 기억은 건드리지 않아요." confirmLabel="테스트 데이터 삭제" busy={busy} onCancel={() => setConfirmReset(false)} onConfirm={() => { setConfirmReset(false); void action({ action: "reset" }, "테스트 데이터를 모두 삭제했어요."); }} />}
+    {missions.length > 0 && <div className="test-footer-actions"><Link className="button button-sticker button-regular" href="/home">추억에서 미션 보기</Link><Button variant="danger" disabled={busy} onClick={() => setConfirmReset(true)}>확인용 데이터 모두 지우기</Button></div>}
+    {confirmReset && <PaperConfirmDialog title="확인용 데이터를 모두 지울까요" description="이 도구에서 만든 미션과 연결된 파일만 영구 삭제해요" confirmLabel="모두 지우기" busy={busy} onCancel={() => setConfirmReset(false)} onConfirm={() => { setConfirmReset(false); void action({ action: "reset" }, "확인용 데이터를 모두 지웠어요"); }} />}
   </section>;
 }

@@ -20,7 +20,7 @@ const requestSchema = z.discriminatedUnion("action", [
     category: z.enum([...TEST_MISSION_CATEGORIES, "random"]),
     templateId: z.string().trim().max(100),
     delay: z.enum(["now", "one-minute"]),
-  }).refine((value) => value.templateId === "random" || value.category !== "random", { message: "세부 미션을 직접 고를 때는 미션 종류도 골라주세요." }),
+  }).refine((value) => value.templateId === "random" || value.category !== "random", { message: "세부 미션을 직접 고를 때는 미션 종류도 골라주세요" }),
   z.object({ action: z.literal("expire"), missionId: z.uuid() }),
   z.object({ action: z.literal("delete"), missionId: z.uuid() }),
   z.object({ action: z.literal("reset") }),
@@ -33,7 +33,7 @@ async function findTestMission(id: string) {
 async function deleteTestMission(id: string): Promise<void> {
   const db = getDb();
   const mission = await findTestMission(id);
-  if (!mission) throw new HttpError(404, "테스트 미션을 찾을 수 없어요.");
+  if (!mission) throw new HttpError(404, "확인용 미션을 찾을 수 없어요");
   if (mission.jobId) await (await getBoss()).cancel(QUEUES.deliverMission, mission.jobId).catch(() => undefined);
 
   const memoryRows = await db.select().from(memories).where(eq(memories.missionId, id));
@@ -50,7 +50,7 @@ async function deleteTestMission(id: string): Promise<void> {
   await db.transaction(async (tx) => {
     if (memoryIds.length) await tx.delete(memories).where(inArray(memories.id, memoryIds));
     await tx.delete(missions).where(eq(missions.id, id));
-    await tx.delete(dateEvents).where(and(eq(dateEvents.id, mission.dateEventId), eq(dateEvents.isTest, true)));
+    if (mission.dateEventId) await tx.delete(dateEvents).where(and(eq(dateEvents.id, mission.dateEventId), eq(dateEvents.isTest, true)));
   });
 }
 
@@ -122,7 +122,7 @@ export const POST = withApiErrors(async (request: Request) => {
       const [dateEvent] = await tx.insert(dateEvents).values({
         startAt: new Date(now.getTime() - 5 * 60_000),
         endAt: new Date(now.getTime() + 2 * 60 * 60_000),
-        title: "테스트 미션",
+        title: "확인용 미션",
         status: "active",
         isTest: true,
         createdBy: session.user.id,
@@ -135,6 +135,7 @@ export const POST = withApiErrors(async (request: Request) => {
         scheduledAt,
         status: "scheduled",
         isTest: true,
+        source: "test",
       }).returning();
       return { dateEvent, mission };
     });
@@ -151,7 +152,7 @@ export const POST = withApiErrors(async (request: Request) => {
 
   if (input.action === "expire") {
     const mission = await findTestMission(input.missionId);
-    if (!mission) throw new HttpError(404, "테스트 미션을 찾을 수 없어요.");
+    if (!mission) throw new HttpError(404, "확인용 미션을 찾을 수 없어요");
     if (mission.jobId) await (await getBoss()).cancel(QUEUES.deliverMission, mission.jobId).catch(() => undefined);
     await db.update(missions).set({ status: "expired", expiresAt: new Date(), updatedAt: new Date() }).where(eq(missions.id, mission.id));
     return json({ ok: true });

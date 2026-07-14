@@ -63,7 +63,7 @@ export const dateEvents = pgTable("date_events", {
 
 export const missions = pgTable("missions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  dateEventId: uuid("date_event_id").references(() => dateEvents.id, { onDelete: "restrict" }).notNull(),
+  dateEventId: uuid("date_event_id").references(() => dateEvents.id, { onDelete: "restrict" }),
   recipientId: uuid("recipient_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
   type: missionTypeEnum("type").notNull(),
   templateId: varchar("template_id", { length: 100 }),
@@ -72,21 +72,23 @@ export const missions = pgTable("missions", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   status: missionStatusEnum("status").default("scheduled").notNull(),
   isTest: boolean("is_test").default(false).notNull(),
+  source: varchar("source", { length: 30 }).default("automatic").notNull(),
   jobId: varchar("job_id", { length: 100 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex("missions_date_event_uidx").on(table.dateEventId).where(sql`${table.isTest} = false`),
+  index("missions_date_event_idx").on(table.dateEventId, table.source, table.scheduledAt),
   index("missions_delivery_idx").on(table.status, table.scheduledAt),
   index("missions_test_idx").on(table.isTest, table.createdAt),
 ]);
 
 export const memories = pgTable("memories", {
   id: uuid("id").defaultRandom().primaryKey(),
-  dateEventId: uuid("date_event_id").references(() => dateEvents.id, { onDelete: "restrict" }).notNull(),
+  dateEventId: uuid("date_event_id").references(() => dateEvents.id, { onDelete: "restrict" }),
   missionId: uuid("mission_id").references(() => missions.id, { onDelete: "restrict" }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
   type: memoryTypeEnum("type").notNull(),
+  customTitle: varchar("custom_title", { length: 30 }),
   text: varchar("text", { length: 300 }),
   emotion: varchar("emotion", { length: 30 }),
   idempotencyKey: uuid("idempotency_key").notNull(),
@@ -155,9 +157,15 @@ export const userSettings = pgTable("user_settings", {
 export const coupleSettings = pgTable("couple_settings", {
   id: integer("id").primaryKey().default(1),
   weeklyMissionLimit: integer("weekly_mission_limit").default(2).notNull(),
+  missionIntervalMinMinutes: integer("mission_interval_min_minutes").default(40).notNull(),
+  missionIntervalMaxMinutes: integer("mission_interval_max_minutes").default(90).notNull(),
   timezone: varchar("timezone", { length: 50 }).default("Asia/Seoul").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [check("couple_settings_singleton", sql`${table.id} = 1`)]);
+}, (table) => [
+  check("couple_settings_singleton", sql`${table.id} = 1`),
+  check("couple_settings_mission_interval_min", sql`${table.missionIntervalMinMinutes} >= 20 AND ${table.missionIntervalMinMinutes} <= 240`),
+  check("couple_settings_mission_interval_max", sql`${table.missionIntervalMaxMinutes} >= ${table.missionIntervalMinMinutes} AND ${table.missionIntervalMaxMinutes} <= 240`),
+]);
 
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: uuid("id").defaultRandom().primaryKey(),

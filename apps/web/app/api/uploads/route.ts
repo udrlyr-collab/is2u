@@ -16,18 +16,18 @@ export const POST = withApiErrors(async (request: Request) => {
   await requireCsrf(request, session);
   const input = uploadCreateSchema.parse(await readJson(request));
   const [memory] = await getDb().select().from(memories).where(and(eq(memories.id, input.memoryId), eq(memories.createdBy, session.user.id))).limit(1);
-  if (!memory || memory.deletedAt) throw new HttpError(404, "기억을 찾을 수 없습니다.");
+  if (!memory || memory.deletedAt) throw new HttpError(404, "추억을 찾을 수 없어요");
   const mediaKind = classifyMedia(input.mimeType);
-  if (!mediaKind) throw new HttpError(400, "지원하지 않는 파일 형식입니다.");
-  if ((memory.type === "manual_video" || memory.type === "video") && mediaKind !== "video") throw new HttpError(400, "동영상 파일을 선택해 주세요.");
-  if (memory.type === "photo" && mediaKind !== "photo") throw new HttpError(400, "사진 파일을 선택해 주세요.");
-  if (memory.type === "audio" && mediaKind !== "audio") throw new HttpError(400, "오디오 파일을 선택해 주세요.");
+  if (!mediaKind) throw new HttpError(400, "지원하지 않는 파일 형식이에요");
+  if ((memory.type === "manual_video" || memory.type === "video") && mediaKind !== "video") throw new HttpError(400, "영상 파일을 선택해 주세요");
+  if (memory.type === "photo" && mediaKind !== "photo") throw new HttpError(400, "사진 파일을 선택해 주세요");
+  if (memory.type === "audio" && mediaKind !== "audio") throw new HttpError(400, "음성 파일을 선택해 주세요");
 
   const env = getServerEnv();
-  const limit = memory.type === "manual_video" ? env.MAX_MANUAL_VIDEO_BYTES
+  const limit = memory.type === "manual_video" || (memory.type === "video" && !memory.missionId) ? env.MAX_MANUAL_VIDEO_BYTES
     : mediaKind === "video" ? env.MAX_MISSION_VIDEO_BYTES
       : mediaKind === "photo" ? env.MAX_PHOTO_BYTES : env.MAX_AUDIO_BYTES;
-  if (input.size > limit) throw new HttpError(413, "파일 크기가 허용 범위를 넘었습니다.");
+  if (input.size > limit) throw new HttpError(413, "파일 크기가 허용 범위를 넘었어요");
 
   const assetId = randomUUID();
   const objectKey = `originals/${memory.id}/${assetId}/source.${safeExtension(input.filename, input.mimeType)}`;
@@ -54,4 +54,3 @@ export const POST = withApiErrors(async (request: Request) => {
   const url = multipart ? null : await createSingleUpload(objectKey, input.mimeType);
   return json({ upload: { id: upload.id, assetId, multipart, uploadId, url, partSize: PART_SIZE, expiresAt: upload.expiresAt } }, 201);
 });
-

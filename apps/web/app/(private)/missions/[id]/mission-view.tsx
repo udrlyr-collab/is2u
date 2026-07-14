@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EMOTION_CATEGORY_DEFINITIONS, EMOTIONS, type EmotionCategoryId } from "@is2u/core/types";
-import { Button, InlineNotice, MissionNote, StatusSticker, Textarea } from "../../../../components/ui";
+import { EMOTION_CATEGORY_DEFINITIONS, EMOTIONS, memoryDisplayTitle, userFacingSentence, type EmotionCategoryId } from "@is2u/core/types";
+import { Button, Field, InlineNotice, Input, MissionNote, StatusSticker, Textarea } from "../../../../components/ui";
 import { PaperConfirmDialog } from "../../../../components/paper-dialog";
-import { usePaperSoundSetting } from "../../../../components/paper-sound-provider";
 import { apiFetch } from "../../../../lib/client";
 import { uploadFile } from "../../../../lib/upload-client";
 
@@ -24,6 +23,7 @@ type Asset = {
 type Memory = {
   id: string;
   type: MissionType;
+  customTitle: string | null;
   text: string | null;
   emotion: string | null;
   createdAt: string;
@@ -51,7 +51,7 @@ type Mission = {
 };
 type Payload = {
   mission: Mission;
-  dateEvent: { id: string; title: string | null; note: string | null; startAt: string; endAt: string };
+  dateEvent: { id: string; title: string | null; note: string | null; startAt: string; endAt: string } | null;
   recipient: { id: string; displayName: string; roleLabel: string };
   memory: Memory | null;
   canEdit: boolean;
@@ -71,9 +71,9 @@ function Wave() {
 }
 
 function ProcessingNote({ original, kind, onRetry }: { original?: Asset; kind: "영상" | "사진" | "소리"; onRetry: () => void }) {
-  if (!original || original.processingStatus === "pending" || original.processingStatus === "processing") return <InlineNotice>{kind}을 보기 좋게 준비하고 있어요.</InlineNotice>;
-  if (original.processingStatus === "failed") return <div className="processing-retry"><InlineNotice tone="error">{kind}을 아직 준비하지 못했어요.</InlineNotice><Button variant="quiet" size="small" onClick={onRetry}>다시 확인하기</Button></div>;
-  return <InlineNotice>{kind}을 불러오고 있어요.</InlineNotice>;
+  if (!original || original.processingStatus === "pending" || original.processingStatus === "processing") return <InlineNotice>{kind}을 보기 좋게 준비하고 있어요</InlineNotice>;
+  if (original.processingStatus === "failed") return <div className="processing-retry"><InlineNotice tone="error">{kind}을 아직 준비하지 못했어요</InlineNotice><Button variant="quiet" size="small" onClick={onRetry}>다시 확인하기</Button></div>;
+  return <InlineNotice>{kind}을 불러오고 있어요</InlineNotice>;
 }
 
 function MemoryMedia({ memory, urls, onZoom, onMediaError, onRetry }: {
@@ -90,15 +90,15 @@ function MemoryMedia({ memory, urls, onZoom, onMediaError, onRetry }: {
   const posterUrl = poster ? urls[poster.id] : undefined;
 
   if (memory.type === "photo") return previewUrl
-    ? <figure className="detail-photo-paper"><button type="button" className="detail-photo-button" data-paper-sound="page-open" onClick={() => onZoom(previewUrl)} aria-label="사진 크게 보기"><img src={previewUrl} alt="완료한 사진 미션" /></button><figcaption>사진을 누르면 크게 볼 수 있어요.</figcaption></figure>
+    ? <figure className="detail-photo-paper"><button type="button" className="detail-photo-button" onClick={() => onZoom(previewUrl)} aria-label="사진 크게 보기"><img src={previewUrl} alt="완료한 사진 미션" /></button><figcaption>사진을 누르면 크게 볼 수 있어요</figcaption></figure>
     : <ProcessingNote original={original} kind="사진" onRetry={onRetry} />;
 
   if (memory.type === "video") return previewUrl
-    ? <div className="detail-video-paper"><video controls playsInline preload="none" poster={posterUrl} onError={() => onMediaError("영상을 불러오지 못했어요. 잠시 뒤 다시 확인해주세요.")}><source src={previewUrl} type={preview?.mimeType ?? "video/mp4"} />이 브라우저에서는 영상을 재생할 수 없어요.</video></div>
+    ? <div className="detail-video-paper"><video controls playsInline preload="none" poster={posterUrl} onError={() => onMediaError("영상을 불러오지 못했어요 잠시 뒤 다시 확인해 주세요")}><source src={previewUrl} type={preview?.mimeType ?? "video/mp4"} />이 브라우저에서는 영상을 재생할 수 없어요</video></div>
     : <ProcessingNote original={original} kind="영상" onRetry={onRetry} />;
 
   if (memory.type === "audio") return previewUrl
-    ? <div className="detail-audio-paper"><Wave /><audio controls preload="metadata" src={previewUrl} onError={() => onMediaError("소리를 불러오지 못했어요.")} /></div>
+    ? <div className="detail-audio-paper"><Wave /><audio controls preload="metadata" src={previewUrl} onError={() => onMediaError("소리를 불러오지 못했어요")} /></div>
     : <ProcessingNote original={original} kind="소리" onRetry={onRetry} />;
 
   return null;
@@ -113,7 +113,7 @@ function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
   return <div className="paper-dialog-backdrop photo-lightbox-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label="사진 확대 보기"><button ref={closeRef} type="button" className="lightbox-close" data-paper-sound="page-close" onClick={onClose}>닫기</button><img src={url} alt="완료한 사진 전체 보기" /></div>
+    <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label="사진 확대 보기"><button ref={closeRef} type="button" className="lightbox-close" onClick={onClose}>닫기</button><img src={url} alt="완료한 사진 전체 보기" /></div>
   </div>;
 }
 
@@ -130,10 +130,10 @@ function EmotionPicker({ emotionId, customEmotion, options, onEmotion, onCustom 
     : EMOTIONS.filter((item) => item.enabled && item.category === category);
 
   return <section className="emotion-diary" aria-label="마음 고르기">
-    {!options && <div className="emotion-tabs" role="tablist" aria-label="감정 분류">{EMOTION_CATEGORY_DEFINITIONS.map((item) => <button type="button" role="tab" aria-selected={category === item.id} key={item.id} className={`emotion-tab emotion-${item.color}`} data-paper-sound="paper-tap" onClick={() => setCategory(item.id)}>{item.label}</button>)}</div>}
+    {!options && <div className="emotion-tabs" role="tablist" aria-label="감정 분류">{EMOTION_CATEGORY_DEFINITIONS.map((item) => <button type="button" role="tab" aria-selected={category === item.id} key={item.id} className={`emotion-tab emotion-${item.color}`} onClick={() => setCategory(item.id)}>{item.label}</button>)}</div>}
     <div className="emotion-paper-grid" role="radiogroup" aria-label="감정 선택">{visible.map((item, index) => {
       const selected = options ? customEmotion === item.label : emotionId === item.id;
-      return <button type="button" role="radio" key={item.id} className={`emotion-paper emotion-${item.color} emotion-angle-${index % 3} ${selected ? "selected" : ""}`} aria-checked={selected} data-paper-sound="note-stick" onClick={() => options ? (onEmotion(""), onCustom(item.label)) : onEmotion(item.id)}><small aria-hidden="true">{item.icon}</small>{item.label}<span className="emotion-check" aria-hidden="true">✓</span></button>;
+      return <button type="button" role="radio" key={item.id} className={`emotion-paper emotion-${item.color} emotion-angle-${index % 3} ${selected ? "selected" : ""}`} aria-checked={selected} onClick={() => options ? (onEmotion(""), onCustom(item.label)) : onEmotion(item.id)}><small aria-hidden="true">{item.icon}</small>{item.label}<span className="emotion-check" aria-hidden="true">✓</span></button>;
     })}</div>
     <label className="custom-emotion-note"><span>내 말로 적기</span><input value={options && options.includes(customEmotion) ? "" : customEmotion} maxLength={30} placeholder="말로 설명하기 어려운데 그냥 좋아" onChange={(event) => { onEmotion(""); onCustom(event.target.value); }} /><small>{options && options.includes(customEmotion) ? 0 : customEmotion.length}/30</small></label>
   </section>;
@@ -166,14 +166,14 @@ function AudioReview({ file }: { file: File }) {
     setUrl(next);
     return () => URL.revokeObjectURL(next);
   }, [file]);
-  return <div className="audio-review"><span>저장하기 전에 들어볼 수 있어요.</span>{url && <audio controls preload="metadata" src={url} />}</div>;
+  return <div className="audio-review"><span>저장하기 전에 들어볼 수 있어요</span>{url && <audio controls preload="metadata" src={url} />}</div>;
 }
 
 export function MissionView({ id }: { id: string }) {
-  const { play } = usePaperSoundSetting();
   const [payload, setPayload] = useState<Payload | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [text, setText] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
   const [emotionId, setEmotionId] = useState("");
   const [customEmotion, setCustomEmotion] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -199,7 +199,7 @@ export function MissionView({ id }: { id: string }) {
       }));
       setUrls(Object.fromEntries(signed.filter((entry): entry is readonly [string, string] => Boolean(entry))));
     } catch {
-      setNotice({ tone: "error", text: "이 미션을 열 수 없어요. 알림을 받은 계정인지 확인해주세요." });
+      setNotice({ tone: "error", text: "이 미션을 열 수 없어요 알림을 받은 계정인지 확인해 주세요" });
     }
   }, [id]);
 
@@ -227,15 +227,15 @@ export function MissionView({ id }: { id: string }) {
         setFile(new File([new Blob(chunks, { type: mimeType })], `moment-${Date.now()}.webm`, { type: mimeType }));
         recorder.current = null;
         setRecordingSeconds(null);
-        setNotice({ tone: "success", text: "소리를 담았어요. 저장하기 전에 들어볼 수 있어요." });
+        setNotice({ tone: "success", text: "소리를 담았어요 저장하기 전에 들어볼 수 있어요" });
       };
       mediaRecorder.start();
       setRecordingSeconds(10);
-      setNotice({ tone: "info", text: "최대 10초 동안 담고 있어요. 원할 때 먼저 마칠 수 있어요." });
+      setNotice({ tone: "info", text: "최대 10초 동안 담고 있어요 원할 때 먼저 마칠 수 있어요" });
       const timer = window.setInterval(() => setRecordingSeconds((current) => current === null ? null : Math.max(0, current - 1)), 1000);
       window.setTimeout(() => { window.clearInterval(timer); if (mediaRecorder.state === "recording") mediaRecorder.stop(); }, 10_000);
     } catch {
-      setNotice({ tone: "error", text: "마이크를 사용할 수 없어요. 브라우저 권한을 확인해주세요." });
+      setNotice({ tone: "error", text: "마이크를 사용할 수 없어요 브라우저 권한을 확인해 주세요" });
       setRecordingSeconds(null);
     }
   }
@@ -243,18 +243,27 @@ export function MissionView({ id }: { id: string }) {
   async function performComplete() {
     const mission = payload?.mission;
     if (!mission || busy) return;
-    if (["photo", "video", "audio"].includes(mission.type) && !file) {
-      setNotice({ tone: "error", text: "먼저 지금의 순간을 하나 담아주세요." });
+    if (["photo", "video", "audio"].includes(mission.type) && !file && !redoing) {
+      setNotice({ tone: "error", text: "먼저 지금의 순간을 하나 담아주세요" });
       return;
     }
     if (mission.type === "emotion" && !emotionId && !customEmotion.trim()) {
-      setNotice({ tone: "error", text: "지금의 마음을 하나 골라주세요." });
+      setNotice({ tone: "error", text: "지금의 마음을 하나 골라주세요" });
       return;
     }
     setBusy(true);
     setNotice(null);
     try {
       const hasMedia = ["photo", "video", "audio"].includes(mission.type);
+      if (redoing && hasMedia && !file && payload.memory) {
+        await apiFetch(`/api/memories/${payload.memory.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ customTitle, text: payload.memory.text }),
+        });
+        setNotice({ tone: "success", text: "추억을 수정했어요" });
+        window.setTimeout(() => window.location.assign("/home"), 500);
+        return;
+      }
       const result = await apiFetch<{ memory: { id: string } }>(`/api/missions/${id}/complete`, {
         method: "POST",
         body: JSON.stringify({
@@ -262,6 +271,7 @@ export function MissionView({ id }: { id: string }) {
           text: mission.type === "text" ? text : undefined,
           emotionId: mission.type === "emotion" && emotionId ? emotionId : undefined,
           customEmotion: mission.type === "emotion" && !emotionId ? customEmotion.trim() : undefined,
+          customTitle: redoing ? customTitle : undefined,
           idempotencyKey: crypto.randomUUID(),
           replaceExisting: redoing,
           deferReplacement: redoing && hasMedia,
@@ -274,11 +284,10 @@ export function MissionView({ id }: { id: string }) {
       if (redoing && hasMedia) {
         await apiFetch(`/api/missions/${id}/finalize-replacement`, { method: "POST", body: JSON.stringify({ memoryId: result.memory.id }) });
       }
-      setNotice({ tone: "success", text: redoing ? "추억을 수정했어요." : "이 순간을 조용히 보관했어요." });
-      play("save-soft");
+      setNotice({ tone: "success", text: redoing ? "추억을 수정했어요" : "이 순간을 조용히 보관했어요" });
       window.setTimeout(() => window.location.assign("/home"), 700);
     } catch {
-      setNotice({ tone: "error", text: "지금은 보관하지 못했어요. 입력한 내용은 두고 잠시 뒤 다시 눌러주세요." });
+      setNotice({ tone: "error", text: "지금은 보관하지 못했어요 입력한 내용은 두고 잠시 뒤 다시 눌러주세요" });
     } finally {
       setBusy(false);
       setConfirmRedo(false);
@@ -294,7 +303,7 @@ export function MissionView({ id }: { id: string }) {
     if (!payload?.mission || busy) return;
     setBusy(true);
     try { await apiFetch(`/api/missions/${id}/skip`, { method: "POST" }); window.location.assign("/home"); }
-    catch { setNotice({ tone: "error", text: "미션 상태를 바꾸지 못했어요. 잠시 뒤 다시 시도해주세요." }); setBusy(false); }
+    catch { setNotice({ tone: "error", text: "미션 상태를 바꾸지 못했어요 잠시 뒤 다시 시도해 주세요" }); setBusy(false); }
   }
 
   async function downloadOriginal(memoryId: string) {
@@ -306,7 +315,7 @@ export function MissionView({ id }: { id: string }) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch { setNotice({ tone: "error", text: "저장하지 못했어요. 잠시 후 다시 시도해주세요." }); }
+    } catch { setNotice({ tone: "error", text: "저장하지 못했어요 잠시 후 다시 시도해 주세요" }); }
   }
 
   async function deleteMemory() {
@@ -314,11 +323,10 @@ export function MissionView({ id }: { id: string }) {
     setBusy(true);
     try {
       await apiFetch(`/api/memories/${payload.memory.id}`, { method: "DELETE" });
-      play("note-peel");
       setRemoving(true);
       window.setTimeout(() => window.location.assign("/home"), 260);
     } catch {
-      setNotice({ tone: "error", text: "이 추억을 떼어내지 못했어요. 직접 완료한 계정인지 확인해주세요." });
+      setNotice({ tone: "error", text: "이 추억을 떼어내지 못했어요 직접 완료한 계정인지 확인해 주세요" });
       setBusy(false);
       setConfirmDelete(false);
     }
@@ -331,37 +339,41 @@ export function MissionView({ id }: { id: string }) {
     const memory = payload.memory;
     const hasOriginal = Boolean(findAsset(memory, "original"));
     const wasEdited = new Date(memory.updatedAt).getTime() - new Date(memory.firstPinnedAt).getTime() > 1000;
-    return <div className={`mission-detail-sheet ${removing ? "removing" : ""}`}>
+    const role = payload.recipient.roleLabel === "남자친구" ? "boyfriend" : "girlfriend";
+    const displayTitle = memoryDisplayTitle({ type: memory.type, customTitle: memory.customTitle, missionTitle: mission.copy.title });
+    return <div className={`mission-detail-sheet person-${role} ${removing ? "removing" : ""}`}>
       <span className="detail-sheet-tape" aria-hidden="true" />
-      <header className="mission-detail-header"><div><p className="paper-label">{mission.isTest ? "TEST MEMORY" : "MEMORY NOTE"}</p><h1>{mission.copy.title}</h1></div><div className="sticker-row">{mission.isTest && <StatusSticker tone="test">TEST</StatusSticker>}<StatusSticker tone="done">완료</StatusSticker></div></header>
-      <dl className="memory-meta"><div><dt>처음 붙인 시간</dt><dd>{dateFormatter.format(new Date(memory.firstPinnedAt))} {timeFormatter.format(new Date(memory.firstPinnedAt))}</dd></div>{wasEdited && <div><dt>수정한 시간</dt><dd>{dateFormatter.format(new Date(memory.updatedAt))} {timeFormatter.format(new Date(memory.updatedAt))}</dd></div>}<div><dt>미션 대상</dt><dd>{payload.recipient.displayName} · {payload.recipient.roleLabel}</dd></div><div><dt>작성자</dt><dd>{memory.author?.displayName ?? "확인할 수 없음"}</dd></div></dl>
-      <section className="mission-copy-note"><span aria-hidden="true">✦</span><p>{mission.copy.prompt}</p></section>
-      {payload.dateEvent.note && <section className="memory-short-note"><h2>함께 적어둔 메모</h2><p>{payload.dateEvent.note}</p></section>}
+      <header className="mission-detail-header"><div><span className={`recipient-name-tag recipient-${role}`}>{payload.recipient.roleLabel}에게 온 미션</span><h1>{displayTitle}</h1></div><StatusSticker tone="done">완료</StatusSticker></header>
+      <dl className="memory-meta"><div><dt>처음 붙인 시간</dt><dd>{dateFormatter.format(new Date(memory.firstPinnedAt))} {timeFormatter.format(new Date(memory.firstPinnedAt))}</dd></div>{wasEdited && <div><dt>수정한 시간</dt><dd>{dateFormatter.format(new Date(memory.updatedAt))} {timeFormatter.format(new Date(memory.updatedAt))}</dd></div>}<div><dt>미션 대상</dt><dd>{payload.recipient.displayName} · {payload.recipient.roleLabel}</dd></div></dl>
+      {payload.dateEvent?.title && !mission.isTest && <div className="memory-appointment-sticker">{payload.dateEvent.title}</div>}
+      <section className="mission-copy-note"><span aria-hidden="true">✦</span><p>{userFacingSentence(mission.copy.prompt)}</p></section>
+      {payload.dateEvent?.note && <section className="memory-short-note"><h2>함께 적어둔 메모</h2><p>{payload.dateEvent.note}</p></section>}
       {memory.type === "text" && <blockquote className="expanded-text-memory">“{memory.text}”</blockquote>}
       {memory.type === "emotion" && <div className="expanded-emotion-memory"><span aria-hidden="true">✦</span><strong>{memory.emotion}</strong></div>}
       <MemoryMedia memory={memory} urls={urls} onZoom={setZoomUrl} onMediaError={(text) => setNotice({ tone: "error", text })} onRetry={() => void load()} />
-      {hasOriginal && ["photo", "video", "audio"].includes(memory.type) && <div className="original-download-row"><p>이 순간을 기기에 간직할 수 있어요.</p><Button variant="secondary" size="small" data-paper-sound="save-soft" onClick={() => void downloadOriginal(memory.id)}>{memory.type === "photo" ? "원본 사진 저장" : memory.type === "video" ? "원본 영상 저장" : "원본 음성 저장"}</Button></div>}
+      {hasOriginal && ["photo", "video", "audio"].includes(memory.type) && <div className="original-download-row"><p>이 순간을 기기에 간직할 수 있어요</p><Button variant="secondary" size="small" onClick={() => void downloadOriginal(memory.id)}>{memory.type === "photo" ? "원본 사진 저장" : memory.type === "video" ? "원본 영상 저장" : "원본 음성 저장"}</Button></div>}
       {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
-      <div className="memory-detail-actions">{payload.canEdit && <Button variant="secondary" data-paper-sound="page-open" onClick={() => { const option = mission.copy.options?.includes(memory.emotion ?? "") ? memory.emotion : null; const known = option ? null : EMOTIONS.find((item) => item.label === memory.emotion); setRedoing(true); setText(memory.text ?? ""); setEmotionId(known?.id ?? ""); setCustomEmotion(option ?? (known ? "" : memory.emotion ?? "")); setFile(null); setNotice(null); }}>수정하기</Button>}{payload.canDelete && <Button variant="danger" data-paper-sound="note-peel" onClick={() => setConfirmDelete(true)}>추억 떼기</Button>}</div>
+      <div className="memory-detail-actions">{payload.canEdit && <Button variant="secondary" onClick={() => { const option = mission.copy.options?.includes(memory.emotion ?? "") ? memory.emotion : null; const known = option ? null : EMOTIONS.find((item) => item.label === memory.emotion); setRedoing(true); setCustomTitle(memory.customTitle ?? ""); setText(memory.text ?? ""); setEmotionId(known?.id ?? ""); setCustomEmotion(option ?? (known ? "" : memory.emotion ?? "")); setFile(null); setNotice(null); }}>수정하기</Button>}{payload.canDelete && <Button variant="danger" onClick={() => setConfirmDelete(true)}>추억 떼기</Button>}</div>
       {zoomUrl && <PhotoLightbox url={zoomUrl} onClose={() => setZoomUrl(null)} />}
-      {confirmDelete && <PaperConfirmDialog title="이 추억을 여기서 떼어낼까요?" description="떼어낸 추억은 잠시 동안 되돌릴 수 있어요." cancelLabel="아직 남겨둘게요" confirmLabel="추억 떼기" busy={busy} onCancel={() => setConfirmDelete(false)} onConfirm={() => void deleteMemory()} />}
+      {confirmDelete && <PaperConfirmDialog title="이 추억을 여기서 떼어낼까요" description="떼어낸 추억은 잠시 동안 되돌릴 수 있어요" cancelLabel="아직 남겨둘게요" confirmLabel="추억 떼기" busy={busy} onCancel={() => setConfirmDelete(false)} onConfirm={() => void deleteMemory()} />}
     </div>;
   }
 
-  if (mission.status !== "sent" && !redoing) return <MissionNote><p className="paper-label">{mission.isTest ? "TEST NOTE" : "MISSION NOTE"}</p><h1>{mission.status === "expired" ? "이 쪽지는 조용히 지나갔어요." : mission.status === "cancelled" ? "취소된 미션이에요." : "아직 열 시간이 아니에요."}</h1>{notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}</MissionNote>;
+  if (mission.status !== "sent" && !redoing) return <MissionNote><p className="paper-label">MISSION NOTE</p><h1>{mission.status === "expired" ? "이 쪽지는 조용히 지나갔어요" : mission.status === "cancelled" ? "취소된 미션이에요" : "아직 열 시간이 아니에요"}</h1>{notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}</MissionNote>;
 
   return <MissionNote className={redoing ? "redo-note" : ""}>
-    <p className="paper-label">{redoing ? "수정하는 추억" : mission.isTest ? "TEST NOTE" : "지금, 잠깐만"}</p>
-    <h1>{mission.copy.title}</h1>
-    <p className="mission-prompt">{mission.copy.prompt}</p>
-    {mission.type === "text" && <Textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={mission.copy.maxLength ?? 300} rows={3} placeholder="한 문장만 남겨주세요." />}
+    <p className="paper-label">{redoing ? "수정하는 추억" : "지금, 잠깐만"}</p>
+    <h1>{redoing ? memoryDisplayTitle({ type: payload.memory?.type ?? mission.type, customTitle, missionTitle: mission.copy.title }) : mission.copy.title}</h1>
+    <p className="mission-prompt">{userFacingSentence(mission.copy.prompt)}</p>
+    {redoing && <Field label="제목" hint={`${customTitle.length}/30`}><Input value={customTitle} maxLength={30} placeholder="이 추억에 이름을 붙여주세요" onChange={(event) => setCustomTitle(event.target.value)} /></Field>}
+    {mission.type === "text" && <Textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={mission.copy.maxLength ?? 300} rows={3} placeholder="한 문장만 남겨주세요" />}
     {mission.type === "emotion" && <EmotionPicker emotionId={emotionId} customEmotion={customEmotion} options={mission.copy.inputMode === "choice" ? mission.copy.options : undefined} onEmotion={(value) => { setEmotionId(value); if (value) setCustomEmotion(""); }} onCustom={(value) => { setCustomEmotion(value); if (value) setEmotionId(""); }} />}
     {mission.type === "photo" && <CapturePicker kind="photo" file={file} disabled={busy} onFile={setFile} />}
     {mission.type === "video" && <CapturePicker kind="video" file={file} disabled={busy} onFile={setFile} />}
     {mission.type === "audio" && <div className="audio-capture">{recordingSeconds === null ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void recordAudio()}>{file ? "다시 녹음하기" : "10초 소리 담기"}</Button> : <Button type="button" variant="secondary" disabled={busy} onClick={() => recorder.current?.stop()}><span className="recording-count">{recordingSeconds}</span> · 녹음 마치기</Button>}{file && <AudioReview file={file} />}</div>}
     {progress !== null && <div className="paper-progress"><progress max={100} value={progress}>{progress}%</progress><span>{progress}%</span></div>}
     {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
-    <div className="mission-actions"><Button disabled={busy} onClick={requestComplete}>{busy ? "보관하고 있어요…" : redoing ? "수정 내용 저장하기" : "이 순간 보관하기"}</Button>{redoing ? <Button variant="quiet" disabled={busy} data-paper-sound="page-close" onClick={() => setRedoing(false)}>돌아가기</Button> : <Button variant="quiet" disabled={busy} onClick={() => void skip()}>이번에는 그냥 지나가기</Button>}</div>
-    {confirmRedo && <PaperConfirmDialog title="이 추억을 수정할까요?" description="수정 내용을 모두 저장한 뒤에 지금 추억과 바꿔 붙일게요." cancelLabel="조금 더 생각할게요" confirmLabel="수정 내용 저장하기" busy={busy} onCancel={() => setConfirmRedo(false)} onConfirm={() => void performComplete()} />}
+    <div className="mission-actions"><Button disabled={busy} onClick={requestComplete}>{busy ? "보관하고 있어요…" : redoing ? "수정 내용 저장하기" : "이 순간 보관하기"}</Button>{redoing ? <Button variant="quiet" disabled={busy} onClick={() => setRedoing(false)}>돌아가기</Button> : <Button variant="quiet" disabled={busy} onClick={() => void skip()}>이번에는 그냥 지나가기</Button>}</div>
+    {confirmRedo && <PaperConfirmDialog title="이 추억을 수정할까요" description="수정 내용을 모두 저장한 뒤에 지금 추억과 바꿔 붙일게요" cancelLabel="조금 더 생각할게요" confirmLabel="수정 내용 저장하기" busy={busy} onCancel={() => setConfirmRedo(false)} onConfirm={() => void performComplete()} />}
   </MissionNote>;
 }

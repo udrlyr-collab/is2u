@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dateEventCreateSchema, dateEventSchema, missionCompletionSchema, safeExtension } from "@is2u/core/validation";
-import { EMOTIONS } from "@is2u/core/types";
+import { dateEventCreateSchema, dateEventSchema, memoryTitleSchema, missionCompletionSchema, safeExtension } from "@is2u/core/validation";
+import { EMOTIONS, memoryDisplayTitle } from "@is2u/core/types";
 
 describe("input validation", () => {
   it("rejects an inverted date range", () => {
@@ -36,5 +36,22 @@ describe("input validation", () => {
   it("normalizes unsafe extensions", () => {
     expect(safeExtension("moment.MP4", "video/mp4")).toBe("mp4");
     expect(safeExtension("no-extension", "image/jpeg")).toBe("jpg");
+  });
+
+  it("trims optional memory titles, limits them to 30 characters, and rejects markup", () => {
+    expect(memoryTitleSchema.parse("  여름의 오후  ")).toBe("여름의 오후");
+    expect(memoryTitleSchema.parse("   ")).toBeNull();
+    expect(memoryTitleSchema.parse("우리의 여름 & 가을 \"기록\"")).toContain("&");
+    expect(() => memoryTitleSchema.parse("가".repeat(31))).toThrow();
+    expect(() => memoryTitleSchema.parse("<script>alert(1)</script>")).toThrow();
+  });
+
+  it("uses one title priority for direct and mission memories", () => {
+    expect(memoryDisplayTitle({ type: "photo", customTitle: "직접 붙인 제목", missionTitle: "미션 제목" })).toBe("직접 붙인 제목");
+    expect(memoryDisplayTitle({ type: "photo", customTitle: null, missionTitle: "미션 제목" })).toBe("미션 제목");
+    expect(memoryDisplayTitle({ type: "photo" })).toBe("사진으로 남긴 추억");
+    expect(memoryDisplayTitle({ type: "text" })).toBe("글로 남긴 추억");
+    expect(memoryDisplayTitle({ type: "video" })).toBe("영상으로 남긴 추억");
+    expect(memoryDisplayTitle({ type: "audio" })).toBe("목소리로 남긴 추억");
   });
 });

@@ -194,10 +194,18 @@ h3 { margin-bottom: var(--space-2); }
 /* Home mission scrapbook. */
 .home-page { width: min(100%, 76rem); margin: 0 auto; padding: 1rem 1.25rem 4rem; }
 .mission-board { display: grid; gap: 2.7rem; }
-.home-intro { position: relative; max-width: 32rem; padding: 0.6rem 0 0.4rem 0.4rem; }
+.home-intro { position: relative; max-width: none; display: flex; align-items: end; justify-content: space-between; gap: 1rem; padding: 0.6rem 0 0.4rem 0.4rem; }
 .home-intro::after { content: "✦"; position: absolute; top: 0.4rem; right: -0.5rem; color: var(--strawberry); font-size: 1rem; transform: rotate(12deg); }
 .home-intro h1 { margin-bottom: 0.55rem; }
 .home-intro > p:last-child { max-width: 27rem; margin-bottom: 0; color: var(--muted-foreground); }
+.manual-memory-composer { position: relative; z-index: 3; flex: 0 0 auto; }
+.manual-memory-sheet { position: absolute; top: calc(100% + 0.65rem); right: 0; width: min(24rem, calc(100vw - 2rem)); display: grid; gap: 1rem; padding: 1.35rem 1rem 1rem; background: #fff8d9; box-shadow: 3px 4px 0 rgb(70 50 40 / 0.16); transform: rotate(-0.2deg); }
+.manual-memory-sheet h2 { margin: 0; font-size: 1.15rem; }
+.manual-memory-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.manual-memory-choices button { min-height: 58px; display: grid; place-items: center; gap: 0.2rem; padding: 0.55rem; border: 0; background: var(--paper); color: var(--foreground); box-shadow: 2px 3px 0 rgb(70 50 40 / 0.1); cursor: pointer; font: inherit; }
+.manual-memory-choices button:first-child { grid-column: 1 / -1; background: rgb(241 213 138 / 0.58); }
+.manual-memory-choices button span { color: var(--strawberry); }
+.manual-memory-back { justify-self: start; min-height: 44px; border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; }
 .board-loading { min-height: 45vh; display: grid; place-content: center; justify-items: center; gap: 0.8rem; color: var(--muted-foreground); font-family: var(--font-note); font-weight: 300; }
 .board-loading span { width: 3rem; height: 2.4rem; background: var(--butter); box-shadow: var(--paper-shadow); animation: note-wait 1.2s ease-in-out infinite alternate; }
 .empty-board { position: relative; padding: 2rem 1.3rem 1.6rem; background: #fff8d9; box-shadow: var(--paper-shadow); transform: rotate(-0.5deg); }
@@ -214,6 +222,8 @@ h3 { margin-bottom: var(--space-2); }
 .mission-day { display: grid; gap: 0.9rem; }
 .day-divider { display: flex; align-items: center; gap: 0.7rem; margin: 0; color: var(--muted-foreground); font-family: var(--font-note); font-size: 0.78rem; font-weight: 300; }
 .day-divider i { height: 1px; flex: 1; background: repeating-linear-gradient(90deg, #cfbeb0 0 5px, transparent 5px 9px); }
+.day-appointment-stickers { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
+.day-appointment-stickers b, .memory-appointment-sticker { max-width: 13rem; padding: 0.22rem 0.45rem 0.16rem; overflow: hidden; background: rgb(241 213 138 / 0.52); color: #675a3f; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.08); font-family: var(--font-body); font-size: 0.64rem; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; transform: rotate(-0.5deg); }
 .mission-slips { display: grid; grid-template-columns: repeat(3, minmax(15rem, 1fr)); gap: 1.15rem 1rem; align-items: start; }
 .mission-slip-link { display: block; }
 .mission-slip { position: relative; min-height: 11rem; display: grid; gap: 0.8rem; padding: 1.25rem 1rem 0.9rem; background: #fff8d9; box-shadow: var(--paper-shadow); transform: rotate(-0.45deg); transition: transform var(--transition-paper), box-shadow var(--transition-paper); }
@@ -222,11 +232,14 @@ h3 { margin-bottom: var(--space-2); }
 .mission-slip.slip-2 { background: #f5f1ea; transform: rotate(-0.1deg); }
 .mission-slip.slip-sent { outline: 2px solid rgb(217 130 122 / 0.38); }
 .mission-slip.slip-completed { background: var(--paper); }
+.mission-slip.person-boyfriend, .mission-detail-sheet.person-boyfriend { background: #f6fafc; }
+.mission-slip.person-girlfriend, .mission-detail-sheet.person-girlfriend { background: #fff8f7; }
 .mission-slip.slip-expired, .mission-slip.slip-cancelled, .mission-slip.slip-skipped { opacity: 0.72; }
 .slip-tape { position: absolute; top: -0.5rem; left: 50%; width: 3.5rem; height: 0.95rem; background: var(--tape-butter); transform: translateX(-50%) rotate(-1.5deg); }
 .slip-1 .slip-tape { left: 1.5rem; background: var(--tape-sky); transform: rotate(2deg); }
 .mission-slip > header { display: flex; justify-content: space-between; gap: 0.55rem; }
 .mission-slip h3 { margin: 0; font-size: 1.02rem; }
+.memory-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 0.55rem; color: var(--muted-foreground); font-size: 0.66rem; }
 .mission-time { margin: 0 0 0.12rem; color: var(--muted-foreground); font-family: var(--font-note); font-size: 0.68rem; font-weight: 300; }
 .sticker-row { display: flex; flex-wrap: wrap; justify-content: flex-end; align-content: flex-start; gap: 0.25rem; }
 .recipient-name-tag { display: inline-flex; align-items: center; min-height: 1.35rem; padding: 0.13rem 0.38rem; font-family: var(--font-body); font-size: 0.58rem; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.08); }
@@ -450,7 +463,11 @@ h3 { margin-bottom: var(--space-2); }
 .mission-test-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
 .test-template-fieldset { min-width: 0; margin: 1.15rem 0 0; padding: 0; border: 0; }
 .test-template-fieldset legend { margin-bottom: 0.55rem; color: var(--muted-foreground); font-family: var(--font-note); font-size: 0.78rem; }
-.test-category-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+.test-category-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.interval-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 8rem)); gap: 0.65rem; margin-top: 0.8rem; }
+.settings-interval .field-label::after { content: " (분)"; color: var(--muted-foreground); font-size: 0.68rem; }
+.memory-appointment-sticker { justify-self: start; }
+.memory-edit-sheet { display: grid; gap: 0.85rem; padding: 1rem; background: #fff8d9; box-shadow: 2px 3px 0 rgb(70 50 40 / 0.1); }
 .test-category-tabs button, .test-template-notes button { position: relative; min-height: 54px; border: 1px solid transparent; background: #fff8d9; color: var(--foreground); cursor: pointer; box-shadow: 2px 3px 0 rgb(70 50 40 / 0.11); transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease; }
 .test-category-tabs button { display: grid; place-content: center; justify-items: center; gap: 0.2rem; padding: 0.65rem 0.35rem; font-size: 0.78rem; transform: rotate(-0.45deg); }
 .test-category-tabs button:nth-child(even) { transform: rotate(0.55deg); }
@@ -483,6 +500,10 @@ h3 { margin-bottom: var(--space-2); }
   .form-grid, .mission-test-controls { grid-template-columns: 1fr; }
   .test-category-tabs, .test-template-notes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mission-slips { grid-template-columns: 1fr; gap: 0.95rem; }
+  .home-intro { align-items: flex-start; }
+  .manual-memory-sheet { position: fixed; z-index: 90; top: auto; right: 1rem; bottom: calc(5.5rem + env(safe-area-inset-bottom)); max-height: calc(100dvh - 8rem); overflow: auto; }
+  .day-divider { align-items: flex-start; flex-wrap: wrap; }
+  .day-divider i { min-width: 2rem; margin-top: 0.55rem; }
   .mission-slip { min-height: 9.5rem; }
   .mission-slip > header { flex-direction: column; }
   .mission-slip .sticker-row { justify-content: flex-start; }

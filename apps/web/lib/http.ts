@@ -35,11 +35,11 @@ export function cookie(
 
 export async function readJson(request: Request): Promise<unknown> {
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) throw new HttpError(415, "JSON 요청만 허용됩니다.");
+  if (!contentType.toLowerCase().includes("application/json")) throw new HttpError(415, "JSON 요청만 보낼 수 있어요");
   try {
     return await request.json();
   } catch {
-    throw new HttpError(400, "요청 내용을 읽을 수 없습니다.");
+    throw new HttpError(400, "요청 내용을 읽을 수 없어요");
   }
 }
 
@@ -49,10 +49,9 @@ export function withApiErrors<T extends unknown[]>(handler: (...args: T) => Prom
       return await handler(...args);
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);
-      if (error instanceof ZodError) return json({ error: "입력값을 확인해 주세요.", details: error.issues.map((issue) => issue.message) }, 400);
+      if (error instanceof ZodError) return json({ error: "입력값을 확인해 주세요", details: error.issues.map((issue) => issue.message) }, 400);
       console.error("api_request_failed", error instanceof Error ? error.message : "unknown");
-      return json({ error: "잠시 후 다시 시도해 주세요." }, 500);
+      return json({ error: "잠시 후 다시 시도해 주세요" }, 500);
     }
   };
 }
-

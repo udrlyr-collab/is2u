@@ -18,7 +18,7 @@ export function LoginForm() {
       await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ pin }) });
       window.location.assign("/home");
     } catch {
-      setError("PIN을 확인하거나 잠시 뒤 다시 시도해 주세요.");
+      setError("PIN을 확인하거나 잠시 뒤 다시 시도해 주세요");
       setPin("");
     } finally {
       setBusy(false);

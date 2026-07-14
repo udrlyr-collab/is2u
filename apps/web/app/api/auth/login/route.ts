@@ -37,13 +37,13 @@ export const POST = withApiErrors(async (request: Request) => {
   const failures = await failedLoginCount(request, deviceId);
   if (failures >= 5) {
     await new Promise((resolve) => setTimeout(resolve, 1_500));
-    return attachDeviceCookie(json({ error: "PIN을 확인하거나 잠시 뒤 다시 시도해 주세요." }, 429), deviceId);
+    return attachDeviceCookie(json({ error: "PIN을 확인하거나 잠시 뒤 다시 시도해 주세요" }, 429), deviceId);
   }
   if (failures > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, failures * 300)));
 
   const userId = await verifyPin(input.pin);
   await recordLoginAttempt(request, deviceId, Boolean(userId));
-  if (!userId) return attachDeviceCookie(json({ error: "PIN을 확인하거나 잠시 뒤 다시 시도해 주세요." }, 401), deviceId);
+  if (!userId) return attachDeviceCookie(json({ error: "PIN을 확인하거나 잠시 뒤 다시 시도해 주세요" }, 401), deviceId);
 
   const previous = await getSession(request);
   if (previous) await revokeSession(previous.sessionId);

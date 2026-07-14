@@ -7,8 +7,28 @@ export type MissionType = (typeof MISSION_TYPES)[number];
 export const MISSION_STATUSES = ["scheduled", "sent", "completed", "skipped", "expired", "cancelled"] as const;
 export type MissionStatus = (typeof MISSION_STATUSES)[number];
 
+export const MISSION_SOURCES = ["automatic", "test", "manual_random"] as const;
+export type MissionSource = (typeof MISSION_SOURCES)[number];
+
 export const MEMORY_TYPES = ["audio", "photo", "video", "text", "emotion", "manual_video"] as const;
 export type MemoryType = (typeof MEMORY_TYPES)[number];
+
+export const MEMORY_FALLBACK_TITLES: Record<MemoryType, string> = {
+  audio: "목소리로 남긴 추억",
+  photo: "사진으로 남긴 추억",
+  video: "영상으로 남긴 추억",
+  text: "글로 남긴 추억",
+  emotion: "마음으로 남긴 추억",
+  manual_video: "영상으로 남긴 추억",
+};
+
+export function memoryDisplayTitle(input: { type: MemoryType; customTitle?: string | null; missionTitle?: string | null }): string {
+  return input.customTitle?.trim() || input.missionTitle?.trim() || MEMORY_FALLBACK_TITLES[input.type];
+}
+
+export function userFacingSentence(value: string): string {
+  return value.replace(/\.(?=\s*$)/u, "");
+}
 
 export const ASSET_ROLES = ["original", "preview", "thumbnail", "poster"] as const;
 export type AssetRole = (typeof ASSET_ROLES)[number];

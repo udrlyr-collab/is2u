@@ -20,10 +20,10 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
     eq(memories.createdBy, session.user.id),
     eq(memories.pendingReplacement, true),
   )).limit(1);
-  if (!mission || !replacement) throw new HttpError(404, "새 기록을 찾을 수 없습니다.");
+  if (!mission || !replacement) throw new HttpError(404, "새 기록을 찾을 수 없어요");
   if (["photo", "video", "audio"].includes(replacement.type)) {
     const [original] = await db.select({ id: mediaAssets.id }).from(mediaAssets).where(and(eq(mediaAssets.memoryId, memoryId), eq(mediaAssets.role, "original"))).limit(1);
-    if (!original) throw new HttpError(409, "새 기록의 저장이 아직 끝나지 않았어요.");
+    if (!original) throw new HttpError(409, "새 기록의 저장이 아직 끝나지 않았어요");
   }
   const now = new Date();
   await db.transaction(async (tx) => {

@@ -7,9 +7,9 @@ import { json, withApiErrors } from "../../../../lib/http";
 export const GET = withApiErrors(async (request: Request) => {
   await requireSession(request);
   const exclude = new URL(request.url).searchParams.get("exclude");
-  const conditions = [isNull(memories.deletedAt), or(isNull(memories.missionId), eq(missions.isTest, false))!];
+  const conditions = [isNull(memories.deletedAt), eq(memories.pendingReplacement, false), or(isNull(memories.missionId), eq(missions.isTest, false))!];
   if (exclude) conditions.push(ne(memories.id, exclude));
-  const [memory] = await getDb().select({ memory: memories, dateEvent: dateEvents }).from(memories).innerJoin(dateEvents, eq(memories.dateEventId, dateEvents.id)).leftJoin(missions, eq(memories.missionId, missions.id)).where(and(...conditions)).orderBy(sql`random()`).limit(1);
+  const [memory] = await getDb().select({ memory: memories, dateEvent: dateEvents }).from(memories).leftJoin(dateEvents, eq(memories.dateEventId, dateEvents.id)).leftJoin(missions, eq(memories.missionId, missions.id)).where(and(...conditions)).orderBy(sql`random()`).limit(1);
   if (!memory) return json({ memory: null });
   const assets = await getDb().select().from(mediaAssets).where(and(
     eq(mediaAssets.memoryId, memory.memory.id),

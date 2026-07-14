@@ -16,16 +16,16 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   const { id } = await context.params;
   const input = schema.parse(await readJson(request));
   const [row] = await getDb().select({ upload: uploadSessions, asset: mediaAssets }).from(uploadSessions).innerJoin(mediaAssets, eq(uploadSessions.assetId, mediaAssets.id)).where(and(eq(uploadSessions.id, id), eq(uploadSessions.ownerId, session.user.id))).limit(1);
-  if (!row) throw new HttpError(404, "업로드를 찾을 수 없습니다.");
+  if (!row) throw new HttpError(404, "업로드를 찾을 수 없어요");
   if (row.upload.status === "uploaded") return json(row);
-  if (row.upload.status !== "uploading") throw new HttpError(409, "완료할 수 없는 업로드입니다.");
+  if (row.upload.status !== "uploading") throw new HttpError(409, "완료할 수 없는 업로드예요");
   if (row.upload.multipartUploadId) {
-    if (!input.parts.length) throw new HttpError(400, "업로드된 부품 정보가 필요합니다.");
+    if (!input.parts.length) throw new HttpError(400, "올린 파일 조각 정보가 필요해요");
     const sorted = [...input.parts].sort((a, b) => a.partNumber - b.partNumber).map((part) => ({ PartNumber: part.partNumber, ETag: part.etag }));
     await completeMultipartUpload(row.upload.objectKey, row.upload.multipartUploadId, sorted);
   }
   const head = await headMediaObject(row.upload.objectKey);
-  if (Number(head.ContentLength) !== row.asset.fileSize) throw new HttpError(409, "업로드된 파일 크기가 일치하지 않습니다.");
+  if (Number(head.ContentLength) !== row.asset.fileSize) throw new HttpError(409, "올린 파일 크기가 맞지 않아요");
 
   const [job] = await getDb().transaction(async (tx) => {
     await tx.update(uploadSessions).set({ status: "uploaded", parts: input.parts, updatedAt: new Date() }).where(eq(uploadSessions.id, id));
@@ -35,4 +35,3 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   await (await getBoss()).send(QUEUES.processMedia, { processingJobId: job.id, assetId: row.asset.id }, { retryLimit: 3 });
   return json({ upload: { ...row.upload, status: "uploaded", parts: input.parts }, asset: row.asset });
 });
-

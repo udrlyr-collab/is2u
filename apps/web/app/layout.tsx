@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { PaperSoundProvider } from "../components/paper-sound-provider";
 import "./design-tokens.css";
 import "./globals.css";
 
@@ -30,5 +29,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#fbf7f1" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ko"><body className={`${maruLogo.variable} ${maruTitle.variable} ${maruBody.variable} ${maruNote.variable}`}><PaperSoundProvider>{children}</PaperSoundProvider></body></html>;
+  return <html lang="ko"><body className={`${maruLogo.variable} ${maruTitle.variable} ${maruBody.variable} ${maruNote.variable}`}>{children}</body></html>;
 }

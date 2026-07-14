@@ -17,7 +17,7 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
     .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
     .where(and(eq(dateEvents.id, id), eq(dateEvents.isTest, false), isNull(dateEvents.deletedAt)))
     .returning();
-  if (!updated) throw new HttpError(404, "일정을 찾을 수 없습니다.");
+  if (!updated) throw new HttpError(404, "약속을 찾을 수 없어요");
   await getDb().insert(auditEvents).values({ actorId: session.user.id, action: "date_event.cancelled", entityType: "date_event", entityId: id });
   return json({ dateEvent: updated });
 });

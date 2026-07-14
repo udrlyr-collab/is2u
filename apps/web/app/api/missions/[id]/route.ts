@@ -28,11 +28,11 @@ export const GET = withApiErrors(async (request: Request, context: Context) => {
   const db = getDb();
   const [row] = await db.select({ mission: missions, dateEvent: dateEvents, recipient: users })
     .from(missions)
-    .innerJoin(dateEvents, eq(missions.dateEventId, dateEvents.id))
+    .leftJoin(dateEvents, eq(missions.dateEventId, dateEvents.id))
     .innerJoin(users, eq(missions.recipientId, users.id))
     .where(eq(missions.id, id))
     .limit(1);
-  if (!row || (row.mission.recipientId !== session.user.id && row.mission.status !== "completed")) throw new HttpError(404, "미션을 찾을 수 없습니다.");
+  if (!row || (row.mission.recipientId !== session.user.id && row.mission.status !== "completed")) throw new HttpError(404, "미션을 찾을 수 없어요");
 
   const [memory] = await db.select().from(memories).where(and(
     eq(memories.missionId, id),

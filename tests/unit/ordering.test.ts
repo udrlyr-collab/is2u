@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appointmentView, compareAppointmentEvents, compareMissionFeed, missionDisplayAt } from "@is2u/core/ordering";
+import { appointmentView, compareAppointmentDayKeys, compareAppointmentEvents, compareMissionFeed, missionDisplayAt } from "@is2u/core/ordering";
 
 describe("home and calendar ordering", () => {
   it("sorts the unified mission timeline by arrival or completion time, newest first", () => {
@@ -30,7 +30,9 @@ describe("home and calendar ordering", () => {
     ];
     const upcoming = items.filter((item) => appointmentView(item, now) === "upcoming").sort((a, b) => compareAppointmentEvents(a, b, "upcoming"));
     const past = items.filter((item) => appointmentView(item, now) === "past").sort((a, b) => compareAppointmentEvents(a, b, "past"));
-    expect(upcoming.map(({ id }) => id)).toEqual(["cancelled-future", "future", "active"]);
+    expect(upcoming.map(({ id }) => id)).toEqual(["active", "future", "cancelled-future"]);
     expect(past.map(({ id }) => id)).toEqual(["past-recent", "past-old"]);
+    expect(["2026-12-24", "2026-07-17"].sort((a, b) => compareAppointmentDayKeys(a, b, "upcoming"))).toEqual(["2026-07-17", "2026-12-24"]);
+    expect(["2026-07-01", "2026-07-14"].sort((a, b) => compareAppointmentDayKeys(a, b, "past"))).toEqual(["2026-07-14", "2026-07-01"]);
   });
 });

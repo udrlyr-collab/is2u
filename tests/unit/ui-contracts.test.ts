@@ -44,20 +44,16 @@ describe("redesign data contracts", () => {
     await expect(access("apps/web/app/api/memories/manual/route.ts")).rejects.toThrow();
   });
 
-  it("ships the post-it icon set and six local paper sounds", async () => {
+  it("ships the post-it icon set without the removed paper-sound assets", async () => {
     for (const path of [
       "apps/web/public/favicon.ico",
       "apps/web/public/icons/apple-touch-icon.png",
       "apps/web/public/icons/icon-192.png",
       "apps/web/public/icons/icon-512.png",
       "apps/web/public/icons/icon-maskable-512.png",
-      "apps/web/public/sounds/paper-tap.mp3",
-      "apps/web/public/sounds/note-stick.mp3",
-      "apps/web/public/sounds/page-open.mp3",
-      "apps/web/public/sounds/note-peel.mp3",
-      "apps/web/public/sounds/save-soft.mp3",
-      "apps/web/public/sounds/close-paper.mp3",
     ]) await access(path);
+    await expect(access("apps/web/components/paper-sound-provider.tsx")).rejects.toThrow();
+    await expect(access("apps/web/public/sounds/paper-tap.mp3")).rejects.toThrow();
     const manifest = await readFile("apps/web/public/manifest.webmanifest", "utf8");
     expect(manifest).toContain('"purpose": "maskable"');
     expect(manifest).toContain('"name": "추억"');
@@ -105,7 +101,7 @@ describe("redesign data contracts", () => {
     expect(detail).toContain("추억 떼기");
   });
 
-  it("derives the three-section test menu from the shared active templates with random defaults", async () => {
+  it("derives the five-section mission check menu from the shared active templates with random defaults", async () => {
     const [panel, route] = await Promise.all([
       readFile("apps/web/app/(private)/settings/mission-test-panel.tsx", "utf8"),
       readFile("apps/web/app/api/mission-test/route.ts", "utf8"),
@@ -116,6 +112,7 @@ describe("redesign data contracts", () => {
     expect(route).toContain("TEST_MISSION_CATEGORIES");
     expect(route).toContain("chooseTestMissionTemplate");
     expect(route).not.toContain("MISSION_TYPES");
+    for (const category of ["video", "photo", "text", "audio", "emotion"]) expect(panel).toContain(`id: "${category}"`);
   });
 
   it("keeps the appointment view in the URL and shows year and full occurrence position", async () => {
@@ -126,15 +123,15 @@ describe("redesign data contracts", () => {
     expect(calendar).toContain("1일차 · ${occurrence.dayCount}일 약속");
   });
 
-  it("provides an audible paper-sound test and role-specific interaction names", async () => {
-    const [provider, settings] = await Promise.all([
-      readFile("apps/web/components/paper-sound-provider.tsx", "utf8"),
+  it("removes paper-sound and visible install controls while keeping notification settings", async () => {
+    const [layout, settings] = await Promise.all([
+      readFile("apps/web/app/layout.tsx", "utf8"),
       readFile("apps/web/app/(private)/settings/settings-panel.tsx", "utf8"),
     ]);
-    expect(provider).toContain('"page-close"');
-    expect(provider).toContain('closest<HTMLElement>("[data-paper-sound]")');
-    expect(settings).toContain("종이 소리 들어보기");
-    expect(settings).toContain('play("paper-tap")');
+    expect(layout).not.toContain("PaperSoundProvider");
+    expect(settings).not.toContain("종이 소리");
+    expect(settings).not.toContain("앱으로 설치");
+    expect(settings).toContain("알림");
   });
 
   it("provides context menu, long press and a visible menu button for appointments", async () => {
