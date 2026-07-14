@@ -1,0 +1,11 @@
+{
+  "name": "@is2u/media-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "deploy": "wrangler deploy"
+  }
+}
+

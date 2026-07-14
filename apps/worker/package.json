@@ -1,0 +1,10 @@
+{
+  "name": "@is2u/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/index.ts"
+  }
+}

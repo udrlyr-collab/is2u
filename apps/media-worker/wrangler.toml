@@ -1,0 +1,15 @@
+name = "is2u-media"
+main = "src/index.ts"
+compatibility_date = "2026-07-14"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "is2u-media-prod"
+
+[[routes]]
+pattern = "media.is2u.today"
+custom_domain = true
+
+[vars]
+APP_ORIGIN = "https://is2u.today"
+

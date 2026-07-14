@@ -1,0 +1,77 @@
+name: is2u
+
+services:
+  postgres:
+    image: postgres:15.13-alpine
+    restart: unless-stopped
+    env_file: ${IS2U_ENV_FILE:-/opt/is2u/shared/.env}
+    environment:
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 384m
+    cpus: 0.75
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  web:
+    image: is2u-web:${IS2U_RELEASE:-latest}
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    restart: unless-stopped
+    env_file: ${IS2U_ENV_FILE:-/opt/is2u/shared/.env}
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+    mem_limit: 512m
+    cpus: 1.0
+    logging: *logging
+
+  worker:
+    image: is2u-worker:${IS2U_RELEASE:-latest}
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    restart: unless-stopped
+    env_file: ${IS2U_ENV_FILE:-/opt/is2u/shared/.env}
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - /opt/is2u/tmp:/tmp/is2u
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      web: { condition: service_healthy }
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 128m
+    cpus: 0.25
+    logging: *logging
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

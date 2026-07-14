@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.turbo/
+*.log
+.env
+.env.*
+!.env.example
+cloudflare/
+ssh/
+tmp/
+data/
