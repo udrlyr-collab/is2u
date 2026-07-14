@@ -48,7 +48,7 @@ export const GET = withApiErrors(async (request: Request, context: Context) => {
     dateEvent: row.dateEvent,
     recipient: { id: row.recipient.id, displayName: row.recipient.displayName, roleLabel: row.recipient.roleLabel },
     memory: memory ? { ...memory, assets: assets.map(publicAsset), author } : null,
-    canRedo: Boolean(memory && memory.createdBy === session.user.id && row.mission.recipientId === session.user.id),
+    canEdit: Boolean(memory && memory.createdBy === session.user.id && row.mission.recipientId === session.user.id),
     canDelete: Boolean(memory && memory.createdBy === session.user.id),
   });
 });

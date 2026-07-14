@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { allowedMissionIntervals, canCreateActualMission, canDeliverActualMission, chooseMissionTemplate, chooseMissionTime, chooseMissionType, chooseRecipient, seoulWeekBounds } from "@is2u/core/missions";
+import { allowedMissionIntervals, canCreateActualMission, canDeliverActualMission, chooseMissionTemplate, chooseMissionTime, chooseMissionType, chooseRecipient, chooseTestMissionTemplate, seoulWeekBounds } from "@is2u/core/missions";
+import { ACTIVE_MISSION_TEMPLATES, LEGACY_MISSION_TEMPLATES, MISSION_TYPE_WEIGHTS, getMissionTemplate } from "@is2u/core/types";
 
 describe("mission scheduling", () => {
   it("waits 20 minutes and leaves 15 minutes before the end", () => {
@@ -52,8 +53,47 @@ describe("mission scheduling", () => {
   });
 
   it("excludes recently used templates and can constrain the input type", () => {
-    expect(chooseMissionTemplate(["photo-now"], "photo", () => 0).id).not.toBe("photo-now");
+    expect(chooseMissionTemplate(["photo-present-scene"], "photo", () => 0).id).not.toBe("photo-present-scene");
     expect(chooseMissionTemplate([], "audio", () => 0).type).toBe("audio");
+  });
+
+  it("uses exactly the requested 14 active templates and keeps 48 legacy templates inactive", () => {
+    expect(ACTIVE_MISSION_TEMPLATES).toHaveLength(14);
+    expect(LEGACY_MISSION_TEMPLATES).toHaveLength(48);
+    expect(LEGACY_MISSION_TEMPLATES.every((item) => !item.enabled)).toBe(true);
+    expect(getMissionTemplate("photo-hands", "photo").title).toBe("마주 잡은 손");
+    expect(Object.fromEntries(["audio", "photo", "video", "text", "emotion"].map((type) => [type, ACTIVE_MISSION_TEMPLATES.filter((item) => item.type === type).length]))).toEqual({ audio: 3, photo: 3, video: 2, text: 4, emotion: 2 });
+    expect(ACTIVE_MISSION_TEMPLATES.map(({ id, title, prompt }) => ({ id, title, prompt }))).toEqual([
+      { id: "audio-current-sound", title: "지금의 소리", prompt: "지금 이 순간의 소리를 잠깐 남겨주세요." },
+      { id: "audio-memorable-voice", title: "기억할 목소리", prompt: "지금 남기고 싶은 말을 짧게 들려주세요." },
+      { id: "audio-our-words", title: "우리의 한마디", prompt: "둘의 목소리가 담긴 순간을 남겨주세요." },
+      { id: "photo-present-scene", title: "눈앞의 순간", prompt: "지금 기억하고 싶은 장면을 한 장 남겨주세요." },
+      { id: "photo-piece-of-today", title: "오늘의 조각", prompt: "오늘을 떠올리게 할 무언가를 찍어주세요." },
+      { id: "photo-us-now", title: "지금의 우리", prompt: "지금 둘의 순간을 자유롭게 남겨주세요." },
+      { id: "video-brief-movement", title: "잠깐의 움직임", prompt: "지금의 순간을 짧은 영상으로 남겨주세요." },
+      { id: "video-our-few-seconds", title: "우리의 몇 초", prompt: "나중에 다시 보고 싶은 몇 초를 담아주세요." },
+      { id: "text-memorable-words", title: "기억할 한마디", prompt: "지금 기억하고 싶은 말을 남겨주세요." },
+      { id: "text-todays-line", title: "오늘의 한 줄", prompt: "오늘을 한 줄로 남겨주세요." },
+      { id: "text-title-of-now", title: "지금의 제목", prompt: "이 순간에 제목을 붙여주세요." },
+      { id: "text-next-us", title: "다음의 우리", prompt: "함께하고 싶은 다음 순간을 남겨주세요." },
+      { id: "emotion-current-heart", title: "지금의 마음", prompt: "지금 가장 가까운 마음을 골라주세요." },
+      { id: "emotion-our-atmosphere", title: "둘의 분위기", prompt: "지금 둘 사이의 분위기를 골라주세요." },
+    ]);
+  });
+
+  it("prevents immediate template repeats and a third consecutive category", () => {
+    expect(chooseMissionTemplate(["text-memorable-words"], "text", () => 0).id).not.toBe("text-memorable-words");
+    expect(chooseMissionTemplate(["photo-present-scene", "photo-piece-of-today"], null, () => 0).type).not.toBe("photo");
+  });
+
+  it("uses the configured 20/20/10/30/20 category weights", () => {
+    expect(MISSION_TYPE_WEIGHTS).toEqual({ audio: 0.2, photo: 0.2, video: 0.1, text: 0.3, emotion: 0.2 });
+  });
+
+  it("derives test missions from active video, photo, and text templates", () => {
+    expect(chooseTestMissionTemplate("video", null, () => 0).id).toBe("video-brief-movement");
+    expect(chooseTestMissionTemplate("photo", "photo-us-now", () => 0).prompt).toBe("지금 둘의 순간을 자유롭게 남겨주세요.");
+    expect(chooseTestMissionTemplate(null, null, () => 0).type).toBe("video");
   });
 
   it("balances recipients and uses random only for a tie", () => {

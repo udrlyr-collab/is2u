@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 
 export function BackButton({ fallback = "/home", label = "뒤로" }: { fallback?: string; label?: string }) {
   const router = useRouter();
-  return <button type="button" className="back-button" onClick={() => {
+  return <button type="button" className="back-button" data-paper-sound="page-close" onClick={() => {
     const sameOriginReferrer = document.referrer ? new URL(document.referrer).origin === window.location.origin : false;
     if (window.history.length > 1 && sameOriginReferrer) router.back();
     else router.push(fallback);

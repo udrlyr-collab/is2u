@@ -7,7 +7,7 @@ import { InlineNotice, StatusSticker } from "../../../components/ui";
 import { apiFetch } from "../../../lib/client";
 
 type Asset = { id: string; role: "preview" | "thumbnail" | "poster"; mimeType: string; processingStatus: string };
-type Memory = { id: string; type: string; text: string | null; emotion: string | null; createdAt: string; assets: Asset[] };
+type Memory = { id: string; type: string; text: string | null; emotion: string | null; createdAt: string; firstPinnedAt: string; updatedAt: string; assets: Asset[] };
 type Recipient = { id: string; displayName: string; roleLabel: string };
 type Mission = {
   id: string;
@@ -19,14 +19,14 @@ type Mission = {
   expiresAt: string | null;
   displayAt: string;
   recipient: Recipient;
-  dateEvent: { id: string; title: string | null; startAt: string; endAt: string; status: string };
+  dateEvent: { id: string; title: string | null; startAt: string; endAt: string; status: string; deletedAt: string | null };
   copy: { title: string; prompt: string };
   canOpen: boolean;
   memory: Memory | null;
 };
 type Payload = { currentUserId: string; recipients: Recipient[]; missions: Mission[] };
 
-const dayFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "short" });
+const dayFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "long" });
 const timeFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
 const statusCopy = {
   scheduled: { label: "기다리는 중", tone: "neutral" },
@@ -57,6 +57,7 @@ function MissionPreview({ mission, url }: { mission: Mission; url?: string }) {
 
 function MissionSlip({ mission, url, index }: { mission: Mission; url?: string; index: number }) {
   const status = statusCopy[mission.status];
+  const appointmentLabel = mission.isTest ? "테스트 미션" : mission.dateEvent.deletedAt ? "함께한 시간" : mission.dateEvent.title || "함께한 시간";
   const body = <article className={`mission-slip slip-${mission.status} slip-${index % 3}`}>
     <span className="slip-tape" aria-hidden="true" />
     <header>
@@ -64,9 +65,9 @@ function MissionSlip({ mission, url, index }: { mission: Mission; url?: string; 
       <div className="sticker-row"><span className={`recipient-name-tag recipient-${mission.recipient.roleLabel === "남자친구" ? "boyfriend" : "girlfriend"}`}>{mission.recipient.roleLabel}에게 온 미션</span>{mission.isTest && <StatusSticker tone="test">TEST</StatusSticker>}<StatusSticker tone={status.tone}>{status.label}</StatusSticker></div>
     </header>
     <MissionPreview mission={mission} url={url} />
-    <footer><span>{mission.dateEvent.title || "함께하는 시간"}</span>{mission.canOpen && <strong>{mission.status === "completed" ? "자세히 보기 →" : "쪽지 열기 →"}</strong>}</footer>
+    <footer><span>약속 · {appointmentLabel}</span>{mission.canOpen && <strong>{mission.status === "completed" ? "자세히 보기 →" : "쪽지 열기 →"}</strong>}</footer>
   </article>;
-  return mission.canOpen ? <Link href={`/missions/${mission.id}`} className="mission-slip-link">{body}</Link> : body;
+  return mission.canOpen ? <Link href={`/missions/${mission.id}`} data-paper-sound="page-open" className="mission-slip-link">{body}</Link> : body;
 }
 
 export function MissionBoard() {
@@ -101,7 +102,7 @@ export function MissionBoard() {
   if (!payload && !error) return <div className="board-loading"><span aria-hidden="true" />미션 쪽지를 꺼내고 있어요…</div>;
 
   return <div className="mission-board">
-    <header className="home-intro"><p className="paper-label">OUR LITTLE MOMENTS</p><h1>우리의 순간</h1><p>도착한 쪽지와 둘이 남긴 순간을 시간순으로 붙여두었어요.</p></header>
+    <header className="home-intro"><p className="paper-label">OUR LITTLE MEMORIES</p><h1>우리의 추억</h1><p>도착한 쪽지와 둘이 남긴 기억을 처음 붙인 시간순으로 모았어요.</p></header>
     {error && <InlineNotice tone="error">{error}</InlineNotice>}
     {payload && payload.missions.length === 0 && <section className="empty-board"><span className="empty-tape" aria-hidden="true" /><h2>아직 도착한 쪽지가 없어요.</h2><p>약속한 시간이 오면 여기에 작은 미션이 붙어요.</p></section>}
     {payload && <section className="unified-timeline">{[...new Set(payload.missions.map((mission) => seoulDayKey(mission.displayAt)))].map((day) => {

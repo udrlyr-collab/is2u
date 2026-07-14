@@ -78,32 +78,91 @@ export const EMOTIONS: readonly EmotionDefinition[] = EMOTION_CATEGORY_DEFINITIO
 );
 
 export type MissionInputMode = MissionType | "choice";
+export type MissionInputType = "audio-recording" | "image-capture" | "video-capture" | "short-text" | "emotion-select" | "atmosphere-select";
+export type MissionCapability = "microphone" | "camera" | "media-library";
 export type MissionTemplate = {
   id: string;
   type: MissionType;
+  category: MissionType;
   title: string;
   prompt: string;
   inputMode: MissionInputMode;
+  inputType: MissionInputType;
   durationSeconds: number | null;
+  maxDurationSeconds: number | null;
+  maxLength: number | null;
   audience: "recipient" | "couple";
   enabled: boolean;
   weight: number;
+  requiredCapabilities: readonly MissionCapability[];
   options?: readonly string[];
 };
 
 export const MISSION_TYPE_WEIGHTS: Record<MissionType, number> = {
-  audio: 1,
-  photo: 1.2,
-  video: 0.65,
-  text: 1.35,
-  emotion: 1.1,
+  audio: 0.2,
+  photo: 0.2,
+  video: 0.1,
+  text: 0.3,
+  emotion: 0.2,
 };
 
-function template(template: MissionTemplate): MissionTemplate {
-  return template;
+type LegacyMissionTemplate = Omit<MissionTemplate, "category" | "inputType" | "maxDurationSeconds" | "maxLength" | "requiredCapabilities">;
+
+function inputTypeFor(type: MissionType, inputMode: MissionInputMode): MissionInputType {
+  if (type === "audio") return "audio-recording";
+  if (type === "photo") return "image-capture";
+  if (type === "video") return "video-capture";
+  if (type === "text") return "short-text";
+  return inputMode === "choice" ? "atmosphere-select" : "emotion-select";
 }
 
-export const MISSION_TEMPLATES: readonly MissionTemplate[] = [
+function capabilitiesFor(type: MissionType): readonly MissionCapability[] {
+  if (type === "audio") return ["microphone"];
+  if (type === "photo" || type === "video") return ["camera", "media-library"];
+  return [];
+}
+
+function template(value: LegacyMissionTemplate): MissionTemplate {
+  return {
+    ...value,
+    category: value.type,
+    inputType: inputTypeFor(value.type, value.inputMode),
+    maxDurationSeconds: value.durationSeconds,
+    maxLength: value.type === "text" ? 300 : value.type === "emotion" ? 30 : null,
+    requiredCapabilities: capabilitiesFor(value.type),
+    enabled: false,
+  };
+}
+
+function activeTemplate(value: Omit<MissionTemplate, "type" | "inputMode" | "durationSeconds" | "requiredCapabilities">): MissionTemplate {
+  const inputMode: MissionInputMode = value.category === "emotion" ? "choice" : value.category;
+  return {
+    ...value,
+    type: value.category,
+    inputMode,
+    durationSeconds: value.maxDurationSeconds,
+    requiredCapabilities: capabilitiesFor(value.category),
+  };
+}
+
+export const ACTIVE_MISSION_TEMPLATES: readonly MissionTemplate[] = [
+  activeTemplate({ id: "audio-current-sound", category: "audio", title: "지금의 소리", prompt: "지금 이 순간의 소리를 잠깐 남겨주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "audio-memorable-voice", category: "audio", title: "기억할 목소리", prompt: "지금 남기고 싶은 말을 짧게 들려주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "audio-our-words", category: "audio", title: "우리의 한마디", prompt: "둘의 목소리가 담긴 순간을 남겨주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "photo-present-scene", category: "photo", title: "눈앞의 순간", prompt: "지금 기억하고 싶은 장면을 한 장 남겨주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "photo-piece-of-today", category: "photo", title: "오늘의 조각", prompt: "오늘을 떠올리게 할 무언가를 찍어주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "photo-us-now", category: "photo", title: "지금의 우리", prompt: "지금 둘의 순간을 자유롭게 남겨주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "video-brief-movement", category: "video", title: "잠깐의 움직임", prompt: "지금의 순간을 짧은 영상으로 남겨주세요.", inputType: "video-capture", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "video-our-few-seconds", category: "video", title: "우리의 몇 초", prompt: "나중에 다시 보고 싶은 몇 초를 담아주세요.", inputType: "video-capture", maxDurationSeconds: 10, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "text-memorable-words", category: "text", title: "기억할 한마디", prompt: "지금 기억하고 싶은 말을 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "text-todays-line", category: "text", title: "오늘의 한 줄", prompt: "오늘을 한 줄로 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "text-title-of-now", category: "text", title: "지금의 제목", prompt: "이 순간에 제목을 붙여주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 50, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "text-next-us", category: "text", title: "다음의 우리", prompt: "함께하고 싶은 다음 순간을 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "emotion-current-heart", category: "emotion", title: "지금의 마음", prompt: "지금 가장 가까운 마음을 골라주세요.", inputType: "emotion-select", maxDurationSeconds: null, maxLength: 30, audience: "recipient", enabled: true, weight: 1, options: ["편안해요", "신나요", "설레요", "다정해요", "차분해요", "행복해요", "고마워요", "포근해요", "장난치고 싶어요", "아쉬워요", "피곤해요", "복잡해요"] }),
+  activeTemplate({ id: "emotion-our-atmosphere", category: "emotion", title: "둘의 분위기", prompt: "지금 둘 사이의 분위기를 골라주세요.", inputType: "atmosphere-select", maxDurationSeconds: null, maxLength: 30, audience: "couple", enabled: true, weight: 1, options: ["편안한", "장난스러운", "설레는", "다정한", "조용한", "신나는", "포근한", "웃긴", "어색한", "아쉬운", "특별한"] }),
+];
+
+export const LEGACY_MISSION_TEMPLATES: readonly MissionTemplate[] = [
   template({ id: "audio-now", type: "audio", title: "지금의 소리", prompt: "주변의 소리를 10초만 담아주세요.", inputMode: "audio", durationSeconds: 10, audience: "recipient", enabled: true, weight: 1 }),
   template({ id: "photo-now", type: "photo", title: "눈앞의 한 장면", prompt: "지금 눈앞에 있는 장면을 하나만 담아주세요.", inputMode: "photo", durationSeconds: null, audience: "recipient", enabled: true, weight: 1 }),
   template({ id: "video-now", type: "video", title: "잠깐의 움직임", prompt: "지금 이 시간을 짧은 영상으로 담아주세요.", inputMode: "video", durationSeconds: 5, audience: "recipient", enabled: true, weight: 0.7 }),
@@ -161,16 +220,21 @@ export const MISSION_TEMPLATES: readonly MissionTemplate[] = [
   template({ id: "choice-color", type: "emotion", title: "지금의 색", prompt: "지금의 분위기와 가까운 색을 골라주세요.", inputMode: "choice", durationSeconds: null, audience: "couple", enabled: true, weight: 1, options: ["크림", "딸기", "버터", "하늘", "잎사귀", "회보라"] }),
 ];
 
+export const MISSION_TEMPLATES: readonly MissionTemplate[] = [
+  ...ACTIVE_MISSION_TEMPLATES,
+  ...LEGACY_MISSION_TEMPLATES,
+];
+
 export const DEFAULT_MISSION_TEMPLATE_IDS: Record<MissionType, string> = {
-  audio: "audio-now",
-  photo: "photo-now",
-  video: "video-now",
-  text: "text-one-line",
-  emotion: "emotion-now",
+  audio: "audio-current-sound",
+  photo: "photo-present-scene",
+  video: "video-brief-movement",
+  text: "text-memorable-words",
+  emotion: "emotion-current-heart",
 };
 
 export function getMissionTemplate(templateId: string | null | undefined, type: MissionType): MissionTemplate {
-  return MISSION_TEMPLATES.find((item) => item.id === templateId && item.enabled)
+  return MISSION_TEMPLATES.find((item) => item.id === templateId)
     ?? MISSION_TEMPLATES.find((item) => item.id === DEFAULT_MISSION_TEMPLATE_IDS[type])!;
 }
 

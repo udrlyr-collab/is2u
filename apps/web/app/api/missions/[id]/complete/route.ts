@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
 import { auditEvents, memories, missions } from "@is2u/db/schema";
+import { getMissionTemplate } from "@is2u/core/types";
 import { missionCompletionSchema, resolveEmotion } from "@is2u/core/validation";
 import { requireCsrf, requireSession } from "../../../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../../../lib/http";
@@ -20,6 +21,10 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
     throw new HttpError(410, "이 미션은 조용히 지나갔어요.");
   }
   if (input.memoryType !== mission.type) throw new HttpError(400, "미션과 기록 형식이 일치하지 않습니다.");
+  const template = getMissionTemplate(mission.templateId, mission.type);
+  if (input.memoryType === "text" && template.maxLength && (input.text?.length ?? 0) > template.maxLength) {
+    throw new HttpError(400, `이 미션은 ${template.maxLength}자까지 남길 수 있어요.`);
+  }
 
   const [idempotent] = await db.select().from(memories).where(eq(memories.idempotencyKey, input.idempotencyKey)).limit(1);
   if (idempotent) {
@@ -52,6 +57,8 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
       emotion,
       idempotencyKey: input.idempotencyKey,
       pendingReplacement,
+      firstPinnedAt: existing?.firstPinnedAt ?? now,
+      updatedAt: now,
     }).returning();
     if (replacing && !pendingReplacement) {
       await tx.update(memories).set({

@@ -4,10 +4,19 @@ import { PaperSoundProvider } from "../components/paper-sound-provider";
 import "./design-tokens.css";
 import "./globals.css";
 
-const maruLogo = localFont({ src: "../../../fonts/KMU80TTFHaeongSemiSans.ttf", variable: "--font-maru-logo", display: "swap", preload: true, fallback: ["sans-serif"] });
-const maruTitle = localFont({ src: "../../../fonts/KMU80TTFSungkokSemiSerif.ttf", variable: "--font-maru-title", display: "swap", preload: true, fallback: ["serif"] });
-const maruBody = localFont({ src: "../../../fonts/KMU80TTFHaeongSans.ttf", variable: "--font-maru-body", display: "swap", preload: true, fallback: ["sans-serif"] });
-const maruNote = localFont({ src: "../../../fonts/KMU80TTFSungkokSerif.ttf", variable: "--font-maru-note", display: "swap", preload: true, fallback: ["serif"] });
+const maruLogo = localFont({ src: "../../../fonts/MaruBuri-Bold.ttf", variable: "--font-maru-logo", weight: "700", display: "swap", preload: true, fallback: ["serif"] });
+const maruTitle = localFont({ src: "../../../fonts/MaruBuri-SemiBold.ttf", variable: "--font-maru-title", weight: "600", display: "swap", preload: true, fallback: ["serif"] });
+const maruBody = localFont({ src: "../../../fonts/MaruBuri-Regular.ttf", variable: "--font-maru-body", weight: "400", display: "swap", preload: true, fallback: ["serif"] });
+const maruNote = localFont({
+  src: [
+    { path: "../../../fonts/MaruBuri-ExtraLight.ttf", weight: "200", style: "normal" },
+    { path: "../../../fonts/MaruBuri-Light.ttf", weight: "300", style: "normal" },
+  ],
+  variable: "--font-maru-note",
+  display: "swap",
+  preload: true,
+  fallback: ["serif"],
+});
 
 export const metadata: Metadata = {
   title: { default: "그대로 멈춰라", template: "%s · 그대로 멈춰라" },

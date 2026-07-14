@@ -29,7 +29,7 @@ export function SettingsPanel({ missionTestAvailable }: { missionTestAvailable: 
   const [testOpen, setTestOpen] = useState(false);
   const [pushState, setPushState] = useState<PushState>("checking");
   const [pushBusy, setPushBusy] = useState(false);
-  const { enabled: paperSoundEnabled, setEnabled: setPaperSoundEnabled } = usePaperSoundSetting();
+  const { enabled: paperSoundEnabled, setEnabled: setPaperSoundEnabled, play } = usePaperSoundSetting();
 
   const refreshPushState = useCallback(async () => {
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) { setPushState("unsupported"); return; }
@@ -80,7 +80,7 @@ export function SettingsPanel({ missionTestAvailable }: { missionTestAvailable: 
   return <>
     <div className="settings-stack">
       <section className="settings-note settings-notification"><div><h2>작은 미션 알림</h2><div className="notification-status"><StatusSticker tone={status.tone}>{status.title}</StatusSticker><p className="muted">{status.detail}</p></div></div><div className="settings-actions">{pushState !== "active" && pushState !== "unsupported" && pushState !== "blocked" && <Button variant="secondary" disabled={pushBusy} data-paper-sound="note-stick" onClick={() => void enablePush()}>{pushBusy ? "연결하는 중…" : pushState === "subscription-missing" ? "알림 다시 연결" : "알림 켜기"}</Button>}{pushState === "active" && <Button variant="quiet" onClick={async () => { try { await apiFetch("/api/push/test", { method: "POST" }); setMessage("테스트 알림을 보냈어요."); } catch { setMessage("알림을 보내지 못했어요."); } }}>테스트 알림</Button>}</div></section>
-      <section className="settings-note settings-sound"><div><h2>종이 소리</h2><p className="muted">메모를 붙이고 펼칠 때 작은 종이 소리를 들려드려요.</p></div><Button variant={paperSoundEnabled ? "secondary" : "quiet"} aria-pressed={paperSoundEnabled} onClick={() => setPaperSoundEnabled(!paperSoundEnabled)}>{paperSoundEnabled ? "켜짐" : "꺼짐"}</Button></section>
+      <section className="settings-note settings-sound"><div><h2>종이 소리</h2><p className="muted">메모를 붙이고 펼칠 때 작은 종이 소리를 들려드려요.</p></div><div className="settings-actions"><Button variant="quiet" disabled={!paperSoundEnabled} onClick={() => play("paper-tap")}>종이 소리 들어보기</Button><Button variant={paperSoundEnabled ? "secondary" : "quiet"} aria-pressed={paperSoundEnabled} data-paper-sound="note-stick" onClick={() => setPaperSoundEnabled(!paperSoundEnabled)}>{paperSoundEnabled ? "켜짐" : "꺼짐"}</Button></div></section>
       <section className="settings-note settings-install"><div><h2>앱으로 사용하기</h2><p className="muted">iPhone은 Safari에서 홈 화면에 추가한 뒤 알림을 받을 수 있어요.</p></div></section>
       <section className="settings-note settings-logout"><div><h2>로그아웃</h2><p className="muted">이 기기의 기억 상자를 닫습니다.</p></div><Button variant="danger" size="small" onClick={async () => { await apiFetch("/api/auth/logout", { method: "POST" }); window.location.assign("/login"); }}>로그아웃</Button></section>
     </div>

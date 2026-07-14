@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { expandSeoulDayKeys, parseSeoulDateTimeInput } from "@is2u/core/dates";
-import { CALENDAR_GROUPS, calendarGroup, compareCalendarEvents, type CalendarGroup } from "@is2u/core/ordering";
+import { appointmentView, compareAppointmentEvents, type AppointmentView } from "@is2u/core/ordering";
 import { Button, Field, InlineNotice, Input, StatusSticker } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
+import { usePaperSoundSetting } from "../../../components/paper-sound-provider";
 import { apiFetch } from "../../../lib/client";
 
 type DateEvent = {
@@ -23,22 +25,20 @@ type Occurrence = { event: DateEvent; dayKey: string; dayIndex: number; dayCount
 type Notice = { tone: "error" | "success" | "info"; text: string } | null;
 
 const emptyDraft = (): Draft => ({ startAt: "", endAt: "", title: "" });
-const dayHeadingFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "long" });
+const dayHeadingFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "long" });
 const timeFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
 const statusText = { scheduled: "예정", active: "함께 있는 중", completed: "지난 약속", cancelled: "취소" } as const;
 const statusTone = { scheduled: "neutral", active: "active", completed: "done", cancelled: "cancelled" } as const;
-const groupCopy: Record<CalendarGroup, { label: string; description: string }> = {
-  active: { label: "지금 진행 중", description: "지금 이어지고 있는 약속이에요." },
-  scheduled: { label: "다가오는 약속", description: "가까운 날부터 차례로 붙였어요." },
-  completed: { label: "지난 약속", description: "가장 최근의 시간이 먼저 보여요." },
-  cancelled: { label: "취소된 약속", description: "최근에 취소한 메모부터 남겨두었어요." },
+const viewCopy: Record<AppointmentView, { label: string; description: string }> = {
+  upcoming: { label: "다가오는 약속", description: "위로 갈수록 먼 미래, 아래로 갈수록 지금에 가까워요." },
+  past: { label: "지난 약속", description: "최근 지난 약속부터 오래된 순서로 모았어요." },
 };
 
 function segmentText(occurrence: Occurrence) {
   if (occurrence.dayCount === 1) return null;
-  if (occurrence.dayIndex === 0) return `시작 · ${occurrence.dayCount}일 약속`;
-  if (occurrence.dayIndex === occurrence.dayCount - 1) return `마지막 날 · ${occurrence.dayCount}일 약속`;
-  return `이어지는 약속 · ${occurrence.dayIndex + 1}일째`;
+  if (occurrence.dayIndex === 0) return `시작 · 1일차 · ${occurrence.dayCount}일 약속`;
+  if (occurrence.dayIndex === occurrence.dayCount - 1) return `마지막 날 · ${occurrence.dayIndex + 1}일차 · ${occurrence.dayCount}일 약속`;
+  return `이어지는 약속 · ${occurrence.dayIndex + 1}일차 · ${occurrence.dayCount}일 약속`;
 }
 
 function occurrenceTime(occurrence: Occurrence) {
@@ -166,6 +166,7 @@ function AppointmentActions({ occurrence, index, onCancelled, onDeleted, onError
   >
     <Link
       href={`/dates/${event.id}`}
+      data-paper-sound="page-open"
       className={`appointment-paper appointment-${event.status} paper-tilt-${index % 3}`}
       onClick={(clickEvent) => {
         if (suppressClick.current) { clickEvent.preventDefault(); suppressClick.current = false; }
@@ -181,13 +182,18 @@ function AppointmentActions({ occurrence, index, onCancelled, onDeleted, onError
     {open && <div ref={menuRef} id={menuId} className="appointment-menu" role="menu" onKeyDown={navigateMenu}>
       {event.status !== "cancelled" && <Link href={`/dates/${event.id}`} role="menuitem" tabIndex={-1}>약속 수정</Link>}
       {event.status !== "cancelled" && <button type="button" role="menuitem" tabIndex={-1} disabled={busy} onClick={() => void cancel()}>약속 취소</button>}
-      <button type="button" role="menuitem" tabIndex={-1} disabled={busy} className="menu-danger" onClick={() => { setOpen(false); setConfirmDelete(true); }}>목록에서 삭제</button>
+      <button type="button" role="menuitem" tabIndex={-1} disabled={busy} data-paper-sound="note-peel" className="menu-danger" onClick={() => { setOpen(false); setConfirmDelete(true); }}>목록에서 삭제</button>
     </div>}
     {confirmDelete && <PaperConfirmDialog title={`“${event.title || "함께하는 시간"}” 약속을 목록에서 치울까요?`} description="연결된 기억은 지우지 않고 약속 목록에서만 숨겨요." confirmLabel="목록에서 삭제" busy={busy} onCancel={() => setConfirmDelete(false)} onConfirm={() => void remove()} />}
   </article>;
 }
 
 export function CalendarView() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedView: AppointmentView = searchParams.get("view") === "past" ? "past" : "upcoming";
+  const { play } = usePaperSoundSetting();
   const [events, setEvents] = useState<DateEvent[]>([]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -203,19 +209,28 @@ export function CalendarView() {
       .finally(() => setLoading(false));
   }, []);
 
-  const sections = useMemo(() => {
-    const ordered = [...events].sort(compareCalendarEvents);
-    return CALENDAR_GROUPS.map((group) => {
-      const groupEvents = ordered.filter((event) => calendarGroup(event) === group);
-      const occurrences = groupEvents.flatMap((event) => {
-        const keys = expandSeoulDayKeys(event.startAt, event.endAt);
-        const orderedKeys = group === "completed" || group === "cancelled" ? [...keys].reverse() : keys;
-        return orderedKeys.map((dayKey) => ({ event, dayKey, dayIndex: keys.indexOf(dayKey), dayCount: keys.length }));
-      });
-      const days = [...new Set(occurrences.map((item) => item.dayKey))].map((key) => ({ key, occurrences: occurrences.filter((item) => item.dayKey === key) }));
-      return { group, days, count: groupEvents.length };
-    }).filter((section) => section.count > 0);
-  }, [events]);
+  const timeline = useMemo(() => {
+    const now = new Date();
+    const viewEvents = events.filter((event) => appointmentView(event, now) === selectedView).sort((a, b) => compareAppointmentEvents(a, b, selectedView));
+    const occurrences = viewEvents.flatMap((event) => {
+      const keys = expandSeoulDayKeys(event.startAt, event.endAt);
+      return keys.map((dayKey, dayIndex) => ({ event, dayKey, dayIndex, dayCount: keys.length }));
+    });
+    const dayKeys = [...new Set(occurrences.map((item) => item.dayKey))].sort((a, b) => b.localeCompare(a));
+    return {
+      count: viewEvents.length,
+      days: dayKeys.map((key) => ({
+        key,
+        occurrences: occurrences.filter((item) => item.dayKey === key).sort((a, b) => compareAppointmentEvents(a.event, b.event, selectedView)),
+      })),
+    };
+  }, [events, selectedView]);
+
+  function selectView(view: AppointmentView) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", view);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   function updateDraft(key: keyof Draft, value: string) { setDraft((current) => ({ ...current, [key]: value })); }
 
@@ -242,6 +257,7 @@ export function CalendarView() {
       setClientRequestId("");
       setOpen(false);
       setNotice({ tone: "success", text: "새 약속을 서울 시간으로 붙였어요." });
+      play("save-soft");
     } catch {
       setNotice({ tone: "error", text: "약속을 저장하지 못했어요. 입력한 내용은 그대로 두었으니 잠시 후 다시 시도해 주세요." });
     } finally { setSaving(false); }
@@ -254,24 +270,25 @@ export function CalendarView() {
       <p className="form-note-title">새 약속 메모 · 서울 시간</p>
       <div className="form-grid"><Field label="시작"><Input value={draft.startAt} onChange={(event) => updateDraft("startAt", event.target.value)} name="startAt" type="datetime-local" required /></Field><Field label="끝"><Input value={draft.endAt} onChange={(event) => updateDraft("endAt", event.target.value)} name="endAt" type="datetime-local" required /></Field></div>
       <Field label="짧은 제목" hint="선택 사항"><Input value={draft.title} onChange={(event) => updateDraft("title", event.target.value)} name="title" maxLength={80} placeholder="예: 서울 산책" /></Field>
-      <div className="form-actions"><Button type="button" variant="quiet" onClick={() => setOpen(false)}>취소</Button><Button disabled={saving}>{saving ? "붙이는 중…" : "약속 붙이기"}</Button></div>
+      <div className="form-actions"><Button type="button" variant="quiet" data-paper-sound="page-close" onClick={() => setOpen(false)}>취소</Button><Button disabled={saving}>{saving ? "붙이는 중…" : "약속 붙이기"}</Button></div>
     </form>}
     {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
-    {loading ? <p className="empty-list">약속 메모를 펼치고 있어요…</p> : sections.length === 0 ? <p className="empty-list">아직 붙여둔 약속이 없어요.</p> : <div className="calendar-groups">
-      {sections.map((section) => <section className={`calendar-group calendar-group-${section.group}`} key={section.group}>
-        <header className="calendar-group-heading"><span>{String(section.count).padStart(2, "0")}</span><div><h2>{groupCopy[section.group].label}</h2><p>{groupCopy[section.group].description}</p></div></header>
-        <div className="calendar-days">{section.days.map((day, dayIndex) => <section className="calendar-day" key={`${section.group}-${day.key}`}>
+    <div className="appointment-view-tabs" role="tablist" aria-label="약속 보기"><button type="button" role="tab" aria-selected={selectedView === "upcoming"} data-paper-sound="paper-tap" onClick={() => selectView("upcoming")}>다가오는 약속</button><button type="button" role="tab" aria-selected={selectedView === "past"} data-paper-sound="paper-tap" onClick={() => selectView("past")}>지난 약속</button></div>
+    {loading ? <p className="empty-list">약속 메모를 펼치고 있어요…</p> : timeline.count === 0 ? <p className="empty-list">{selectedView === "upcoming" ? "다가오는 약속이 없어요." : "지나온 약속이 없어요."}</p> : <div className="calendar-groups">
+      <section className={`calendar-group calendar-group-${selectedView}`}>
+        <header className="calendar-group-heading"><span>{String(timeline.count).padStart(2, "0")}</span><div><h2>{viewCopy[selectedView].label}</h2><p>{viewCopy[selectedView].description}</p></div></header>
+        <div className="calendar-days">{timeline.days.map((day, dayIndex) => <section className="calendar-day" key={`${selectedView}-${day.key}`}>
           <h3 className="calendar-day-heading"><span>{dayHeadingFormatter.format(new Date(`${day.key}T12:00:00+09:00`))}</span><i aria-hidden="true" /></h3>
           <div className="appointment-stack">{day.occurrences.map((occurrence, index) => <AppointmentActions
             key={`${occurrence.event.id}-${occurrence.dayKey}`}
             occurrence={occurrence}
             index={dayIndex + index}
-            onCancelled={(updated) => { setEvents((current) => current.map((item) => item.id === updated.id ? updated : item)); setNotice({ tone: "info", text: "취소한 약속은 마지막 묶음에 그대로 남겨두었어요." }); }}
-            onDeleted={(id) => { setEvents((current) => current.filter((item) => item.id !== id)); setNotice({ tone: "success", text: "약속을 목록에서 치웠어요." }); }}
+            onCancelled={(updated) => { setEvents((current) => current.map((item) => item.id === updated.id ? updated : item)); setNotice({ tone: "info", text: "취소한 약속은 원래 날짜의 보기에 남겨두었어요." }); play("note-peel"); }}
+            onDeleted={(id) => { setEvents((current) => current.filter((item) => item.id !== id)); setNotice({ tone: "success", text: "약속을 목록에서 치웠어요." }); play("note-peel"); }}
             onError={(text) => setNotice({ tone: "error", text })}
           />)}</div>
         </section>)}</div>
-      </section>)}
+      </section>
     </div>}
   </section>;
 }

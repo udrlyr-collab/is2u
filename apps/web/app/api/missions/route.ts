@@ -37,7 +37,7 @@ export const GET = withApiErrors(async (request: Request) => {
 
   const feed = rows.map(({ mission, dateEvent, recipient }) => {
       const memory = memoryRows.find((candidate) => candidate.missionId === mission.id) ?? null;
-      const displayAt = missionDisplayAt({ ...mission, memoryCreatedAt: memory?.createdAt });
+      const displayAt = missionDisplayAt({ ...mission, memoryCreatedAt: memory?.createdAt, memoryFirstPinnedAt: memory?.firstPinnedAt });
       return {
         id: mission.id,
         type: mission.type,
@@ -49,7 +49,7 @@ export const GET = withApiErrors(async (request: Request) => {
         updatedAt: mission.updatedAt,
         displayAt,
         recipient: { id: recipient.id, displayName: recipient.displayName, roleLabel: recipient.roleLabel },
-        dateEvent: { id: dateEvent.id, title: dateEvent.title, startAt: dateEvent.startAt, endAt: dateEvent.endAt, status: dateEvent.status },
+        dateEvent: { id: dateEvent.id, title: dateEvent.title, startAt: dateEvent.startAt, endAt: dateEvent.endAt, status: dateEvent.status, deletedAt: dateEvent.deletedAt },
         copy: getMissionTemplate(mission.templateId, mission.type),
         canOpen: (mission.recipientId === session.user.id && mission.status === "sent") || (mission.status === "completed" && Boolean(memory)),
         memory: memory ? {
@@ -58,13 +58,15 @@ export const GET = withApiErrors(async (request: Request) => {
           text: memory.text,
           emotion: memory.emotion,
           createdAt: memory.createdAt,
+          firstPinnedAt: memory.firstPinnedAt,
+          updatedAt: memory.updatedAt,
           assets: assets.filter((asset) => asset.memoryId === memory.id && asset.role !== "original"),
         } : null,
       };
     }).filter((item) => item.status !== "completed" || Boolean(item.memory));
   feed.sort((a, b) => compareMissionFeed(
-    { ...a, memoryCreatedAt: a.memory?.createdAt },
-    { ...b, memoryCreatedAt: b.memory?.createdAt },
+    { ...a, memoryCreatedAt: a.memory?.createdAt, memoryFirstPinnedAt: a.memory?.firstPinnedAt },
+    { ...b, memoryCreatedAt: b.memory?.createdAt, memoryFirstPinnedAt: b.memory?.firstPinnedAt },
     now,
   ));
 

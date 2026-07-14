@@ -94,6 +94,8 @@ export const memories = pgTable("memories", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   purgeAfter: timestamp("purge_after", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  firstPinnedAt: timestamp("first_pinned_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("memories_mission_idx").on(table.missionId, table.createdAt), uniqueIndex("memories_idempotency_uidx").on(table.idempotencyKey), index("memories_visible_idx").on(table.deletedAt, table.pendingReplacement, table.createdAt)]);
 
 export const mediaAssets = pgTable("media_assets", {

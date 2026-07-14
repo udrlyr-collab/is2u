@@ -9,16 +9,16 @@ const SOUND_FILES = {
   "page-open": "/sounds/page-open.mp3",
   "note-peel": "/sounds/note-peel.mp3",
   "save-soft": "/sounds/save-soft.mp3",
-  "close-paper": "/sounds/close-paper.mp3",
+  "page-close": "/sounds/close-paper.mp3",
 } as const;
-type SoundName = keyof typeof SOUND_FILES;
+export type PaperSoundName = keyof typeof SOUND_FILES;
 
-const PaperSoundContext = createContext<{ enabled: boolean; setEnabled: (enabled: boolean) => void }>({ enabled: true, setEnabled: () => undefined });
+const PaperSoundContext = createContext<{ enabled: boolean; setEnabled: (enabled: boolean) => void; play: (name: PaperSoundName) => void }>({ enabled: true, setEnabled: () => undefined, play: () => undefined });
 
 export function PaperSoundProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(true);
-  const audio = useRef(new Map<SoundName, HTMLAudioElement>());
-  const lastPlayed = useRef(new Map<SoundName, number>());
+  const audio = useRef(new Map<PaperSoundName, HTMLAudioElement>());
+  const lastPlayed = useRef(new Map<PaperSoundName, number>());
 
   useEffect(() => { setEnabledState(localStorage.getItem(STORAGE_KEY) !== "off"); }, []);
 
@@ -27,7 +27,7 @@ export function PaperSoundProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, next ? "on" : "off");
   }, []);
 
-  const play = useCallback((name: SoundName) => {
+  const play = useCallback((name: PaperSoundName) => {
     if (!enabled) return;
     const now = performance.now();
     if (now - (lastPlayed.current.get(name) ?? 0) < 120) return;
@@ -36,8 +36,8 @@ export function PaperSoundProvider({ children }: { children: ReactNode }) {
       let player = audio.current.get(name);
       if (!player) {
         player = new Audio(SOUND_FILES[name]);
-        player.preload = "metadata";
-        player.volume = 0.12;
+        player.preload = "auto";
+        player.volume = 0.22;
         audio.current.set(name, player);
       }
       player.currentTime = 0;
@@ -50,17 +50,17 @@ export function PaperSoundProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
       if (!event.isTrusted) return;
-      const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-paper-sound],button,a") : null;
+      const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-paper-sound]") : null;
       if (!target || target.matches(":disabled") || target.getAttribute("aria-disabled") === "true") return;
       const requested = target.dataset.paperSound;
-      const name = requested && requested in SOUND_FILES ? requested as SoundName : "paper-tap";
+      const name = requested && requested in SOUND_FILES ? requested as PaperSoundName : "paper-tap";
       play(name);
     };
     document.addEventListener("click", onClick, { capture: true });
     return () => document.removeEventListener("click", onClick, { capture: true });
   }, [play]);
 
-  const value = useMemo(() => ({ enabled, setEnabled }), [enabled, setEnabled]);
+  const value = useMemo(() => ({ enabled, setEnabled, play }), [enabled, play, setEnabled]);
   return <PaperSoundContext.Provider value={value}>{children}</PaperSoundContext.Provider>;
 }
 

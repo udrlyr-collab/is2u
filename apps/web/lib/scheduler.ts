@@ -47,7 +47,7 @@ export async function scheduleMissionForDate(dateEventId: string): Promise<void>
 
   const recentTemplates = await db.select({ templateId: missions.templateId }).from(missions)
     .where(and(eq(missions.isTest, false), inArray(missions.status, ["sent", "completed", "skipped", "expired"])))
-    .orderBy(desc(missions.sentAt)).limit(6);
+    .orderBy(desc(missions.sentAt)).limit(3);
   const delivered = await db.select({ recipientId: missions.recipientId, value: count() }).from(missions).where(and(eq(missions.isTest, false), inArray(missions.status, ["sent", "completed", "skipped", "expired"]))).groupBy(missions.recipientId);
   const recipients = await db.select({ id: users.id }).from(users).orderBy(users.id);
   if (recipients.length !== 2) throw new Error("고정 사용자가 정확히 두 명이어야 합니다.");

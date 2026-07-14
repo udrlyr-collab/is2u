@@ -36,7 +36,7 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
       isNull(memories.deletedAt),
       eq(memories.pendingReplacement, false),
     ));
-    await tx.update(memories).set({ pendingReplacement: false }).where(eq(memories.id, memoryId));
+    await tx.update(memories).set({ pendingReplacement: false, updatedAt: now }).where(eq(memories.id, memoryId));
     await tx.insert(auditEvents).values({ actorId: session.user.id, action: "mission.replacement_finalized", entityType: "mission", entityId: id });
   });
   return json({ ok: true });

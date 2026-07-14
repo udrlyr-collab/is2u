@@ -82,7 +82,12 @@ export function chooseMissionTemplate(
   requestedType: MissionType | null = null,
   random = Math.random,
 ): MissionTemplate {
-  const eligibleTypes = requestedType ? [requestedType] : MISSION_TYPES.filter((type) => MISSION_TEMPLATES.some((item) => item.enabled && item.type === type));
+  const activeTemplates = MISSION_TEMPLATES.filter((item) => item.enabled);
+  let eligibleTypes = requestedType ? [requestedType] : MISSION_TYPES.filter((type) => activeTemplates.some((item) => item.type === type));
+  const recentTemplates = recentTemplateIds.map((id) => MISSION_TEMPLATES.find((item) => item.id === id)).filter((item): item is MissionTemplate => Boolean(item));
+  if (!requestedType && recentTemplates.length >= 2 && recentTemplates[0].type === recentTemplates[1].type && eligibleTypes.length > 1) {
+    eligibleTypes = eligibleTypes.filter((type) => type !== recentTemplates[0].type);
+  }
   const typeWeight = eligibleTypes.reduce((sum, type) => sum + Math.max(0, MISSION_TYPE_WEIGHTS[type]), 0);
   let typeCursor = random() * typeWeight;
   let selectedType = eligibleTypes[0];
@@ -90,9 +95,11 @@ export function chooseMissionTemplate(
     typeCursor -= Math.max(0, MISSION_TYPE_WEIGHTS[type]);
     if (typeCursor < 0) { selectedType = type; break; }
   }
-  const enabled = MISSION_TEMPLATES.filter((item) => item.enabled && item.type === selectedType);
-  const withoutRecent = enabled.filter((item) => !recentTemplateIds.includes(item.id));
-  const candidates = withoutRecent.length ? withoutRecent : enabled;
+  const enabled = activeTemplates.filter((item) => item.type === selectedType);
+  const recentThree = recentTemplateIds.slice(0, 3);
+  const withoutRecent = enabled.filter((item) => !recentThree.includes(item.id));
+  const withoutImmediateRepeat = enabled.filter((item) => item.id !== recentTemplateIds[0]);
+  const candidates = withoutRecent.length ? withoutRecent : withoutImmediateRepeat.length ? withoutImmediateRepeat : enabled;
   if (!candidates.length) throw new Error("사용 가능한 미션 템플릿이 없습니다.");
   const totalWeight = candidates.reduce((sum, item) => sum + Math.max(0, item.weight), 0);
   if (totalWeight <= 0) return candidates[0];
@@ -102,6 +109,28 @@ export function chooseMissionTemplate(
     if (cursor < 0) return item;
   }
   return candidates.at(-1)!;
+}
+
+export const TEST_MISSION_CATEGORIES = ["video", "photo", "text"] as const;
+export type TestMissionCategory = typeof TEST_MISSION_CATEGORIES[number];
+
+export function chooseTestMissionTemplate(
+  category: TestMissionCategory | null,
+  templateId: string | null,
+  random = Math.random,
+): MissionTemplate {
+  const enabled = MISSION_TEMPLATES.filter((item) => item.enabled && TEST_MISSION_CATEGORIES.includes(item.category as TestMissionCategory));
+  if (templateId) {
+    const selected = enabled.find((item) => item.id === templateId && (!category || item.category === category));
+    if (!selected) throw new Error("선택한 테스트 미션을 사용할 수 없습니다.");
+    return selected;
+  }
+  const categories = category ? [category] : TEST_MISSION_CATEGORIES.filter((item) => enabled.some((template) => template.category === item));
+  const selectedCategory = categories[Math.min(categories.length - 1, Math.floor(random() * categories.length))];
+  const candidates = enabled.filter((item) => item.category === selectedCategory);
+  const selected = candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))];
+  if (!selected) throw new Error("사용 가능한 테스트 미션이 없습니다.");
+  return selected;
 }
 
 export function chooseRecipient(

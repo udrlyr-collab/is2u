@@ -6,8 +6,8 @@ import { getDb } from "@is2u/db/client";
 import { dateEvents, mediaAssets, memories, missions, users } from "@is2u/db/schema";
 import { getServerEnv } from "@is2u/core/env";
 import { getMediaR2 } from "@is2u/core/r2";
-import { FIXED_USERS, MISSION_TYPES, getMissionTemplate } from "@is2u/core/types";
-import { chooseMissionTemplate } from "@is2u/core/missions";
+import { FIXED_USERS, MISSION_TEMPLATES, getMissionTemplate } from "@is2u/core/types";
+import { TEST_MISSION_CATEGORIES, chooseTestMissionTemplate } from "@is2u/core/missions";
 import { requireCsrf } from "../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../lib/http";
 import { requireMissionTestAdmin } from "../../../lib/mission-test";
@@ -17,9 +17,10 @@ const requestSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
     recipient: z.enum(["seongmin", "seoyeong", "random"]),
-    missionType: z.enum([...MISSION_TYPES, "random"]),
+    category: z.enum([...TEST_MISSION_CATEGORIES, "random"]),
+    templateId: z.string().trim().max(100),
     delay: z.enum(["now", "one-minute"]),
-  }),
+  }).refine((value) => value.templateId === "random" || value.category !== "random", { message: "세부 미션을 직접 고를 때는 미션 종류도 골라주세요." }),
   z.object({ action: z.literal("expire"), missionId: z.uuid() }),
   z.object({ action: z.literal("delete"), missionId: z.uuid() }),
   z.object({ action: z.literal("reset") }),
@@ -95,7 +96,10 @@ async function listTestMissions(currentUserId: string) {
 
 export const GET = withApiErrors(async (request: Request) => {
   const session = await requireMissionTestAdmin(request);
-  return json({ missions: await listTestMissions(session.user.id) });
+  return json({
+    missions: await listTestMissions(session.user.id),
+    templates: MISSION_TEMPLATES.filter((template) => template.enabled && TEST_MISSION_CATEGORIES.includes(template.category as (typeof TEST_MISSION_CATEGORIES)[number])),
+  });
 });
 
 export const POST = withApiErrors(async (request: Request) => {
@@ -108,15 +112,17 @@ export const POST = withApiErrors(async (request: Request) => {
     const recipientId = input.recipient === "random"
       ? [FIXED_USERS.seongmin.id, FIXED_USERS.seoyeong.id][randomInt(2)]
       : FIXED_USERS[input.recipient].id;
-    const requestedType = input.missionType === "random" ? null : input.missionType;
-    const selectedTemplate = chooseMissionTemplate([], requestedType);
+    const selectedTemplate = chooseTestMissionTemplate(
+      input.category === "random" ? null : input.category,
+      input.templateId === "random" ? null : input.templateId,
+    );
     const now = new Date();
     const scheduledAt = new Date(now.getTime() + (input.delay === "one-minute" ? 60_000 : 0));
     const result = await db.transaction(async (tx) => {
       const [dateEvent] = await tx.insert(dateEvents).values({
         startAt: new Date(now.getTime() - 5 * 60_000),
         endAt: new Date(now.getTime() + 2 * 60 * 60_000),
-        title: "미션 테스트",
+        title: "테스트 미션",
         status: "active",
         isTest: true,
         createdBy: session.user.id,
