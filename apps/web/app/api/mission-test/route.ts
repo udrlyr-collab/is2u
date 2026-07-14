@@ -1,12 +1,13 @@
 import { randomInt } from "node:crypto";
 import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@is2u/db/client";
 import { dateEvents, mediaAssets, memories, missions, users } from "@is2u/db/schema";
 import { getServerEnv } from "@is2u/core/env";
 import { getMediaR2 } from "@is2u/core/r2";
-import { FIXED_USERS, MISSION_COPY, MISSION_TYPES } from "@is2u/core/types";
+import { FIXED_USERS, MISSION_TYPES, getMissionTemplate } from "@is2u/core/types";
+import { chooseMissionTemplate } from "@is2u/core/missions";
 import { requireCsrf } from "../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../lib/http";
 import { requireMissionTestAdmin } from "../../../lib/mission-test";
@@ -61,7 +62,11 @@ async function listTestMissions(currentUserId: string) {
     .orderBy(desc(missions.createdAt))
     .limit(30);
   const missionIds = rows.map(({ mission }) => mission.id);
-  const memoryRows = missionIds.length ? await db.select().from(memories).where(inArray(memories.missionId, missionIds)) : [];
+  const memoryRows = missionIds.length ? await db.select().from(memories).where(and(
+    inArray(memories.missionId, missionIds),
+    isNull(memories.deletedAt),
+    eq(memories.pendingReplacement, false),
+  )).orderBy(desc(memories.createdAt)) : [];
   const memoryIds = memoryRows.map((memory) => memory.id);
   const assets = memoryIds.length ? await db.select({ id: mediaAssets.id, memoryId: mediaAssets.memoryId, role: mediaAssets.role, processingStatus: mediaAssets.processingStatus })
     .from(mediaAssets).where(inArray(mediaAssets.memoryId, memoryIds)) : [];
@@ -77,7 +82,7 @@ async function listTestMissions(currentUserId: string) {
       expiresAt: mission.expiresAt,
       recipientId: mission.recipientId,
       recipientName,
-      copy: MISSION_COPY[mission.type],
+      copy: getMissionTemplate(mission.templateId, mission.type),
       canOpen: mission.recipientId === currentUserId,
       memory: memory ? {
         id: memory.id,
@@ -103,7 +108,8 @@ export const POST = withApiErrors(async (request: Request) => {
     const recipientId = input.recipient === "random"
       ? [FIXED_USERS.seongmin.id, FIXED_USERS.seoyeong.id][randomInt(2)]
       : FIXED_USERS[input.recipient].id;
-    const type = input.missionType === "random" ? MISSION_TYPES[randomInt(MISSION_TYPES.length)] : input.missionType;
+    const requestedType = input.missionType === "random" ? null : input.missionType;
+    const selectedTemplate = chooseMissionTemplate([], requestedType);
     const now = new Date();
     const scheduledAt = new Date(now.getTime() + (input.delay === "one-minute" ? 60_000 : 0));
     const result = await db.transaction(async (tx) => {
@@ -118,7 +124,8 @@ export const POST = withApiErrors(async (request: Request) => {
       const [mission] = await tx.insert(missions).values({
         dateEventId: dateEvent.id,
         recipientId,
-        type,
+        type: selectedTemplate.type,
+        templateId: selectedTemplate.id,
         scheduledAt,
         status: "scheduled",
         isTest: true,

@@ -1,6 +1,6 @@
 {
-  "name": "그대로 멈춰라.",
-  "short_name": "그대로 멈춰라.",
+  "name": "그대로 멈춰라",
+  "short_name": "그대로 멈춰라",
   "description": "둘만의 평범한 순간을 조용히 보관하는 작은 기억 상자",
   "start_url": "/home",
   "scope": "/",
@@ -9,8 +9,8 @@
   "theme_color": "#f5eee5",
   "lang": "ko-KR",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
-

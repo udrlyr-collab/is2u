@@ -1,5 +1,5 @@
 import { DateTime, Interval } from "luxon";
-import { MISSION_TYPES, type MissionType } from "./types";
+import { MISSION_TEMPLATES, MISSION_TYPES, MISSION_TYPE_WEIGHTS, type MissionTemplate, type MissionType } from "./types";
 
 export type MissionWindowOptions = {
   timezone?: string;
@@ -75,6 +75,33 @@ export function chooseMissionTime(
 export function chooseMissionType(previous: MissionType | null, random = Math.random): MissionType {
   const candidates = previous ? MISSION_TYPES.filter((type) => type !== previous) : [...MISSION_TYPES];
   return candidates[Math.floor(random() * candidates.length)] ?? candidates[0];
+}
+
+export function chooseMissionTemplate(
+  recentTemplateIds: readonly string[] = [],
+  requestedType: MissionType | null = null,
+  random = Math.random,
+): MissionTemplate {
+  const eligibleTypes = requestedType ? [requestedType] : MISSION_TYPES.filter((type) => MISSION_TEMPLATES.some((item) => item.enabled && item.type === type));
+  const typeWeight = eligibleTypes.reduce((sum, type) => sum + Math.max(0, MISSION_TYPE_WEIGHTS[type]), 0);
+  let typeCursor = random() * typeWeight;
+  let selectedType = eligibleTypes[0];
+  for (const type of eligibleTypes) {
+    typeCursor -= Math.max(0, MISSION_TYPE_WEIGHTS[type]);
+    if (typeCursor < 0) { selectedType = type; break; }
+  }
+  const enabled = MISSION_TEMPLATES.filter((item) => item.enabled && item.type === selectedType);
+  const withoutRecent = enabled.filter((item) => !recentTemplateIds.includes(item.id));
+  const candidates = withoutRecent.length ? withoutRecent : enabled;
+  if (!candidates.length) throw new Error("사용 가능한 미션 템플릿이 없습니다.");
+  const totalWeight = candidates.reduce((sum, item) => sum + Math.max(0, item.weight), 0);
+  if (totalWeight <= 0) return candidates[0];
+  let cursor = random() * totalWeight;
+  for (const item of candidates) {
+    cursor -= Math.max(0, item.weight);
+    if (cursor < 0) return item;
+  }
+  return candidates.at(-1)!;
 }
 
 export function chooseRecipient(

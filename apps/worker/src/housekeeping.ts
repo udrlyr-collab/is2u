@@ -28,6 +28,16 @@ export async function runHousekeeping(): Promise<void> {
     await db.update(uploadSessions).set({ status: "expired", updatedAt: now }).where(eq(uploadSessions.id, upload.id));
   }
 
+  const abandonedReplacementBefore = new Date(now.getTime() - 24 * 60 * 60_000);
+  await db.update(memories).set({
+    deletedAt: now,
+    purgeAfter: new Date(now.getTime() + 30 * 24 * 60 * 60_000),
+  }).where(and(
+    eq(memories.pendingReplacement, true),
+    isNull(memories.deletedAt),
+    lt(memories.createdAt, abandonedReplacementBefore),
+  ));
+
   const purgeable = await db.select({ memory: memories }).from(memories).where(and(isNotNull(memories.purgeAfter), lt(memories.purgeAfter, now))).limit(25);
   const env = getServerEnv();
   for (const { memory } of purgeable) {

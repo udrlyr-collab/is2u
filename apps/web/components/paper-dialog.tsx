@@ -3,10 +3,11 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { Button } from "./ui";
 
-export function PaperConfirmDialog({ title, description, confirmLabel, busy = false, onCancel, onConfirm }: {
+export function PaperConfirmDialog({ title, description, confirmLabel, cancelLabel = "그대로 두기", busy = false, onCancel, onConfirm }: {
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string;
   busy?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -33,7 +34,7 @@ export function PaperConfirmDialog({ title, description, confirmLabel, busy = fa
       <p className="paper-label">PLEASE CHECK</p>
       <h2 id={titleId}>{title}</h2>
       <p>{description}</p>
-      <div className="dialog-actions"><Button ref={cancelRef} variant="secondary" disabled={busy} onClick={onCancel}>그대로 두기</Button><Button ref={confirmRef} variant="danger" disabled={busy} onClick={onConfirm}>{busy ? "처리하는 중…" : confirmLabel}</Button></div>
+      <div className="dialog-actions"><Button ref={cancelRef} variant="secondary" disabled={busy} onClick={onCancel}>{cancelLabel}</Button><Button ref={confirmRef} variant="danger" disabled={busy} onClick={onConfirm}>{busy ? "처리하는 중…" : confirmLabel}</Button></div>
     </div>
   </div>;
 }

@@ -92,7 +92,7 @@ export function MissionTestPanel() {
         </article>;
       })}
     </div>
-    {missions.length > 0 && <div className="test-footer-actions"><Link className="button button-sticker button-regular" href="/home">home에서 미션 보기</Link><Button variant="danger" disabled={busy} onClick={() => setConfirmReset(true)}>테스트 데이터 전체 삭제</Button></div>}
+    {missions.length > 0 && <div className="test-footer-actions"><Link className="button button-sticker button-regular" href="/home">순간에서 미션 보기</Link><Button variant="danger" disabled={busy} onClick={() => setConfirmReset(true)}>테스트 데이터 전체 삭제</Button></div>}
     {confirmReset && <PaperConfirmDialog title="모든 테스트 데이터를 삭제할까요?" description="테스트 미션과 연결된 테스트 파일만 영구 삭제해요. 실제 미션과 기억은 건드리지 않아요." confirmLabel="테스트 데이터 삭제" busy={busy} onCancel={() => setConfirmReset(false)} onConfirm={() => { setConfirmReset(false); void action({ action: "reset" }, "테스트 데이터를 모두 삭제했어요."); }} />}
   </section>;
 }

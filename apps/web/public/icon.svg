@@ -1,6 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="116" fill="#e8d8ca"/>
-  <circle cx="206" cy="250" r="96" fill="#fffaf4"/>
-  <circle cx="306" cy="250" r="96" fill="#c98776" fill-opacity=".82"/>
-  <path d="M256 358c-67-38-128-89-128-162 0-45 35-80 80-80 22 0 39 8 48 23 9-15 26-23 48-23 45 0 80 35 80 80 0 73-61 124-128 162Z" fill="none" stroke="#5e4840" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">그대로 멈춰라</title>
+  <rect width="512" height="512" rx="104" fill="#fbf7f1"/>
+  <rect x="105" y="100" width="302" height="316" rx="25" fill="#6b5043" opacity=".14" transform="translate(8 10)"/>
+  <path d="M105 100h302v238l-78 78H105z" fill="#f1d58a"/>
+  <path d="M329 416v-78h78z" fill="#d9b65d"/>
+  <path d="M329 338h78l-78 78z" fill="#fff1bd" opacity=".75"/>
+  <rect x="184" y="74" width="144" height="45" rx="7" fill="#e9ded2" opacity=".9" transform="rotate(-2 256 96)"/>
+  <path d="M171 286c42-7 113-7 169 0" fill="none" stroke="#7a5649" stroke-width="17" stroke-linecap="round"/>
+  <path d="m252 182 8 20 21 2-16 14 5 21-18-11-18 11 5-21-16-14 21-2z" fill="#d9827a"/>
 </svg>

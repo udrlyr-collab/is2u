@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const tabs = [
-  { href: "/home", label: "home", icon: "home" },
+  { href: "/home", label: "순간", icon: "home" },
   { href: "/calendar", label: "약속", icon: "calendar" },
   { href: "/settings", label: "설정", icon: "settings" },
 ] as const;
@@ -19,7 +19,7 @@ export function SiteHeader({ name }: { name: string }) {
   const pathname = usePathname();
   return <>
     <header className="site-header">
-      <Link href="/home" className="wordmark">그대로 멈춰라.</Link>
+      <Link href="/home" className="wordmark" aria-label="그대로 멈춰라, 순간으로 이동">그대로 멈춰라</Link>
       <span className="header-note" aria-hidden="true">둘만의 보관함</span>
       <span className="visually-hidden">{name}님으로 로그인됨</span>
     </header>

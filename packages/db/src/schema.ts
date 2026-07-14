@@ -66,6 +66,7 @@ export const missions = pgTable("missions", {
   dateEventId: uuid("date_event_id").references(() => dateEvents.id, { onDelete: "restrict" }).notNull(),
   recipientId: uuid("recipient_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
   type: missionTypeEnum("type").notNull(),
+  templateId: varchar("template_id", { length: 100 }),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -89,10 +90,11 @@ export const memories = pgTable("memories", {
   text: varchar("text", { length: 300 }),
   emotion: varchar("emotion", { length: 30 }),
   idempotencyKey: uuid("idempotency_key").notNull(),
+  pendingReplacement: boolean("pending_replacement").default(false).notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   purgeAfter: timestamp("purge_after", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [uniqueIndex("memories_mission_uidx").on(table.missionId), uniqueIndex("memories_idempotency_uidx").on(table.idempotencyKey), index("memories_visible_idx").on(table.deletedAt, table.createdAt)]);
+}, (table) => [index("memories_mission_idx").on(table.missionId, table.createdAt), uniqueIndex("memories_idempotency_uidx").on(table.idempotencyKey), index("memories_visible_idx").on(table.deletedAt, table.pendingReplacement, table.createdAt)]);
 
 export const mediaAssets = pgTable("media_assets", {
   id: uuid("id").defaultRandom().primaryKey(),

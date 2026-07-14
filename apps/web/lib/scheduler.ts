@@ -1,9 +1,8 @@
 import { and, count, desc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
 import { coupleSettings, dateEvents, missions, users } from "@is2u/db/schema";
-import { canCreateActualMission, chooseMissionTime, chooseMissionType, chooseRecipient, seoulWeekBounds } from "@is2u/core/missions";
+import { canCreateActualMission, chooseMissionTemplate, chooseMissionTime, chooseRecipient, seoulWeekBounds } from "@is2u/core/missions";
 import { getServerEnv } from "@is2u/core/env";
-import type { MissionType } from "@is2u/core/types";
 import { getBoss, QUEUES } from "./queue";
 
 export async function cancelScheduledMission(dateEventId: string): Promise<void> {
@@ -46,7 +45,9 @@ export async function scheduleMissionForDate(dateEventId: string): Promise<void>
   ));
   if (Number(weekly?.value ?? 0) >= (settings?.weeklyMissionLimit ?? env.MISSION_WEEKLY_LIMIT)) return;
 
-  const [previous] = await db.select({ type: missions.type }).from(missions).where(and(eq(missions.isTest, false), inArray(missions.status, ["sent", "completed", "skipped", "expired"]))).orderBy(desc(missions.sentAt)).limit(1);
+  const recentTemplates = await db.select({ templateId: missions.templateId }).from(missions)
+    .where(and(eq(missions.isTest, false), inArray(missions.status, ["sent", "completed", "skipped", "expired"])))
+    .orderBy(desc(missions.sentAt)).limit(6);
   const delivered = await db.select({ recipientId: missions.recipientId, value: count() }).from(missions).where(and(eq(missions.isTest, false), inArray(missions.status, ["sent", "completed", "skipped", "expired"]))).groupBy(missions.recipientId);
   const recipients = await db.select({ id: users.id }).from(users).orderBy(users.id);
   if (recipients.length !== 2) throw new Error("고정 사용자가 정확히 두 명이어야 합니다.");
@@ -55,12 +56,13 @@ export async function scheduleMissionForDate(dateEventId: string): Promise<void>
     { id: recipients[0].id, delivered: counts.get(recipients[0].id) ?? 0 },
     { id: recipients[1].id, delivered: counts.get(recipients[1].id) ?? 0 },
   );
-  const type = chooseMissionType((previous?.type as MissionType | undefined) ?? null);
+  const selectedTemplate = chooseMissionTemplate(recentTemplates.map((item) => item.templateId).filter((id): id is string => Boolean(id)));
 
   const [created] = already
     ? await db.update(missions).set({
       recipientId,
-      type,
+      type: selectedTemplate.type,
+      templateId: selectedTemplate.id,
       scheduledAt,
       sentAt: null,
       expiresAt: null,
@@ -68,7 +70,7 @@ export async function scheduleMissionForDate(dateEventId: string): Promise<void>
       jobId: null,
       updatedAt: now,
     }).where(and(eq(missions.id, already.id), eq(missions.status, "cancelled"))).returning()
-    : await db.insert(missions).values({ dateEventId, recipientId, type, scheduledAt, isTest: false }).onConflictDoNothing().returning();
+    : await db.insert(missions).values({ dateEventId, recipientId, type: selectedTemplate.type, templateId: selectedTemplate.id, scheduledAt, isTest: false }).onConflictDoNothing().returning();
   if (!created) return;
   try {
     const jobId = await (await getBoss()).sendAfter(QUEUES.deliverMission, { missionId: created.id }, { retryLimit: 2 }, scheduledAt);

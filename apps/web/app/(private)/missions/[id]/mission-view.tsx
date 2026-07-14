@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EMOTIONS } from "@is2u/core/types";
+import { EMOTION_CATEGORY_DEFINITIONS, EMOTIONS, type EmotionCategoryId } from "@is2u/core/types";
 import { Button, InlineNotice, MissionNote, StatusSticker, Textarea } from "../../../../components/ui";
+import { PaperConfirmDialog } from "../../../../components/paper-dialog";
 import { apiFetch } from "../../../../lib/client";
 import { uploadFile } from "../../../../lib/upload-client";
 
@@ -21,10 +22,11 @@ type Asset = {
 };
 type Memory = {
   id: string;
-  type: MissionType | "manual_video";
+  type: MissionType;
   text: string | null;
   emotion: string | null;
   createdAt: string;
+  author: { id: string; displayName: string; roleLabel: string } | null;
   assets: Asset[];
 };
 type Mission = {
@@ -35,19 +37,27 @@ type Mission = {
   scheduledAt: string;
   sentAt: string | null;
   expiresAt: string | null;
-  copy: { title: string; prompt: string };
+  copy: {
+    title: string;
+    prompt: string;
+    inputMode: MissionType | "choice";
+    durationSeconds: number | null;
+    options?: readonly string[];
+  };
 };
 type Payload = {
   mission: Mission;
   dateEvent: { id: string; title: string | null; note: string | null; startAt: string; endAt: string };
   recipient: { id: string; displayName: string; roleLabel: string };
   memory: Memory | null;
-  originalArchive: Memory[];
+  canRedo: boolean;
+  canDelete: boolean;
 };
 type Notice = { tone: "info" | "error" | "success"; text: string } | null;
 
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short" });
 const timeFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
+const RECENT_EMOTIONS_KEY = "is2u.recent-emotions";
 
 function findAsset(memory: Memory | null, role: Asset["role"]): Asset | undefined {
   return memory?.assets.find((asset) => asset.role === role);
@@ -57,17 +67,18 @@ function Wave() {
   return <span className="wave" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span>;
 }
 
-function ProcessingNote({ original, kind }: { original?: Asset; kind: "영상" | "사진" | "소리" }) {
-  if (!original || original.processingStatus === "pending" || original.processingStatus === "processing") return <InlineNotice>원본은 보관됐고 {kind === "영상" ? "재생용 영상" : "미리보기"}을 준비하고 있어요.</InlineNotice>;
-  if (original.processingStatus === "failed") return <InlineNotice tone="error">{kind} 미리보기를 준비하지 못했어요. 원본은 안전하게 보관되어 있어요.</InlineNotice>;
-  return <InlineNotice tone="error">{kind} 미리보기를 아직 불러오지 못했어요.</InlineNotice>;
+function ProcessingNote({ original, kind, onRetry }: { original?: Asset; kind: "영상" | "사진" | "소리"; onRetry: () => void }) {
+  if (!original || original.processingStatus === "pending" || original.processingStatus === "processing") return <InlineNotice>{kind}을 보기 좋게 준비하고 있어요.</InlineNotice>;
+  if (original.processingStatus === "failed") return <div className="processing-retry"><InlineNotice tone="error">{kind}을 아직 준비하지 못했어요.</InlineNotice><Button variant="quiet" size="small" onClick={onRetry}>다시 확인하기</Button></div>;
+  return <InlineNotice>{kind}을 불러오고 있어요.</InlineNotice>;
 }
 
-function MemoryMedia({ memory, urls, onZoom, onMediaError }: {
+function MemoryMedia({ memory, urls, onZoom, onMediaError, onRetry }: {
   memory: Memory;
   urls: Record<string, string>;
   onZoom: (url: string) => void;
   onMediaError: (message: string) => void;
+  onRetry: () => void;
 }) {
   const original = findAsset(memory, "original");
   const preview = findAsset(memory, "preview");
@@ -76,16 +87,16 @@ function MemoryMedia({ memory, urls, onZoom, onMediaError }: {
   const posterUrl = poster ? urls[poster.id] : undefined;
 
   if (memory.type === "photo") return previewUrl
-    ? <figure className="detail-photo-paper"><p className="media-kind-label">화면용 preview · 전체 사진</p><button type="button" className="detail-photo-button" onClick={() => onZoom(previewUrl)} aria-label="사진 크게 보기"><img src={previewUrl} alt="완료한 사진 미션" /></button><figcaption>사진을 누르면 더 크게 볼 수 있어요.</figcaption></figure>
-    : <ProcessingNote original={original} kind="사진" />;
+    ? <figure className="detail-photo-paper"><button type="button" className="detail-photo-button" data-paper-sound="page-open" onClick={() => onZoom(previewUrl)} aria-label="사진 크게 보기"><img src={previewUrl} alt="완료한 사진 미션" /></button><figcaption>사진을 누르면 크게 볼 수 있어요.</figcaption></figure>
+    : <ProcessingNote original={original} kind="사진" onRetry={onRetry} />;
 
-  if (memory.type === "video" || memory.type === "manual_video") return previewUrl
-    ? <div className="detail-video-paper"><p className="media-kind-label">재생용 preview · 원본과 별도</p><video controls playsInline preload="none" poster={posterUrl} onError={() => onMediaError("영상을 아직 불러오지 못했어요. 잠시 후 다시 눌러주세요.")}><source src={previewUrl} type={preview?.mimeType ?? "video/mp4"} />재생할 수 없는 브라우저예요.</video></div>
-    : <ProcessingNote original={original} kind="영상" />;
+  if (memory.type === "video") return previewUrl
+    ? <div className="detail-video-paper"><video controls playsInline preload="none" poster={posterUrl} onError={() => onMediaError("영상을 불러오지 못했어요. 잠시 뒤 다시 확인해주세요.")}><source src={previewUrl} type={preview?.mimeType ?? "video/mp4"} />이 브라우저에서는 영상을 재생할 수 없어요.</video></div>
+    : <ProcessingNote original={original} kind="영상" onRetry={onRetry} />;
 
   if (memory.type === "audio") return previewUrl
-    ? <div className="detail-audio-paper"><p className="media-kind-label">재생용 소리</p><Wave /><audio controls preload="none" src={previewUrl} onError={() => onMediaError("소리를 아직 불러오지 못했어요.")} /></div>
-    : <ProcessingNote original={original} kind="소리" />;
+    ? <div className="detail-audio-paper"><Wave /><audio controls preload="metadata" src={previewUrl} onError={() => onMediaError("소리를 불러오지 못했어요.")} /></div>
+    : <ProcessingNote original={original} kind="소리" onRetry={onRetry} />;
 
   return null;
 }
@@ -99,7 +110,62 @@ function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
   return <div className="paper-dialog-backdrop photo-lightbox-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label="사진 확대 보기"><button ref={closeRef} type="button" className="lightbox-close" onClick={onClose}>닫기</button><img src={url} alt="완료한 사진 원본 비율 미리보기" /></div>
+    <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label="사진 확대 보기"><button ref={closeRef} type="button" className="lightbox-close" data-paper-sound="close-paper" onClick={onClose}>닫기</button><img src={url} alt="완료한 사진 전체 보기" /></div>
+  </div>;
+}
+
+function EmotionPicker({ emotionId, customEmotion, options, onEmotion, onCustom }: {
+  emotionId: string;
+  customEmotion: string;
+  options?: readonly string[];
+  onEmotion: (id: string) => void;
+  onCustom: (value: string) => void;
+}) {
+  const [category, setCategory] = useState<EmotionCategoryId>("comfort");
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  useEffect(() => {
+    try { setRecentIds((JSON.parse(localStorage.getItem(RECENT_EMOTIONS_KEY) ?? "[]") as string[]).slice(0, 6)); } catch { setRecentIds([]); }
+  }, []);
+  const visible = options
+    ? options.map((label, index) => ({ id: `choice-${index}`, label, icon: "✦", color: "butter" }))
+    : EMOTIONS.filter((item) => item.enabled && item.category === category);
+  const recent = options ? [] : recentIds.map((id) => EMOTIONS.find((item) => item.id === id)).filter((item): item is (typeof EMOTIONS)[number] => Boolean(item));
+
+  function selectKnown(id: string) {
+    onEmotion(id);
+    const next = [id, ...recentIds.filter((item) => item !== id)].slice(0, 6);
+    setRecentIds(next);
+    try { localStorage.setItem(RECENT_EMOTIONS_KEY, JSON.stringify(next)); } catch { /* Recent choices are optional. */ }
+  }
+
+  return <section className="emotion-diary" aria-label="마음 고르기">
+    {!options && <div className="emotion-tabs" role="tablist" aria-label="감정 분류">{EMOTION_CATEGORY_DEFINITIONS.map((item) => <button type="button" role="tab" aria-selected={category === item.id} key={item.id} className={`emotion-tab emotion-${item.color}`} data-paper-sound="paper-tap" onClick={() => setCategory(item.id)}>{item.label}</button>)}</div>}
+    {recent.length > 0 && <div className="emotion-recent"><p>최근에 붙인 마음</p><div className="emotion-paper-grid">{recent.map((item) => <button type="button" key={`recent-${item.id}`} className={`emotion-paper emotion-${item.color} ${emotionId === item.id ? "selected" : ""}`} aria-pressed={emotionId === item.id} data-paper-sound="note-stick" onClick={() => selectKnown(item.id)}><small aria-hidden="true">{item.icon}</small>{item.label}</button>)}</div></div>}
+    <div className="emotion-paper-grid">{visible.map((item, index) => {
+      const selected = options ? customEmotion === item.label : emotionId === item.id;
+      return <button type="button" key={item.id} className={`emotion-paper emotion-${item.color} emotion-angle-${index % 3} ${selected ? "selected" : ""}`} aria-pressed={selected} data-paper-sound="note-stick" onClick={() => options ? (onEmotion(""), onCustom(item.label)) : selectKnown(item.id)}><small aria-hidden="true">{item.icon}</small>{item.label}<span className="emotion-check" aria-hidden="true">✓</span></button>;
+    })}</div>
+    <label className="custom-emotion-note"><span>내 말로 적기</span><input value={options && options.includes(customEmotion) ? "" : customEmotion} maxLength={30} placeholder="말로 설명하기 어려운데 그냥 좋아" onChange={(event) => { onEmotion(""); onCustom(event.target.value); }} /><small>{options && options.includes(customEmotion) ? 0 : customEmotion.length}/30</small></label>
+  </section>;
+}
+
+function CapturePicker({ kind, file, disabled, onFile }: { kind: "photo" | "video"; file: File | null; disabled: boolean; onFile: (file: File | null) => void }) {
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) { setPreviewUrl(null); return; }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  const accept = kind === "photo" ? "image/*" : "video/*";
+  const label = kind === "photo" ? "사진" : "영상";
+  return <div className="capture-paper">
+    <div className="capture-actions"><Button type="button" variant="secondary" disabled={disabled} onClick={() => cameraRef.current?.click()}>지금 찍기</Button><Button type="button" variant="quiet" disabled={disabled} onClick={() => libraryRef.current?.click()}>{label}에서 고르기</Button></div>
+    <input ref={cameraRef} type="file" accept={accept} capture="environment" hidden onChange={(event) => onFile(event.target.files?.[0] ?? null)} />
+    <input ref={libraryRef} type="file" accept={accept} hidden onChange={(event) => onFile(event.target.files?.[0] ?? null)} />
+    {previewUrl && <figure className="capture-preview">{kind === "photo" ? <img src={previewUrl} alt="고른 사진 미리보기" /> : <video src={previewUrl} controls playsInline preload="metadata" aria-label="고른 영상 미리보기" />}<figcaption><span>{file?.name}</span><Button type="button" variant="quiet" size="small" onClick={() => cameraRef.current?.click()}>다시 찍기</Button></figcaption></figure>}
   </div>;
 }
 
@@ -107,58 +173,57 @@ export function MissionView({ id }: { id: string }) {
   const [payload, setPayload] = useState<Payload | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [text, setText] = useState("");
-  const [emotion, setEmotion] = useState("");
+  const [emotionId, setEmotionId] = useState("");
+  const [customEmotion, setCustomEmotion] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
-  const [archiveProgress, setArchiveProgress] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+  const [redoing, setRedoing] = useState(false);
+  const [confirmRedo, setConfirmRedo] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
 
   const load = useCallback(async () => {
     try {
       const result = await apiFetch<Payload>(`/api/missions/${id}`);
       setPayload(result);
-      const derived = [result.memory, ...result.originalArchive]
-        .filter((memory): memory is Memory => Boolean(memory))
-        .flatMap((memory) => memory.assets)
-        .filter((asset) => asset.role !== "original" && asset.processingStatus === "ready");
+      const derived = (result.memory?.assets ?? []).filter((asset) => asset.role !== "original" && asset.processingStatus === "ready");
       const signed = await Promise.all(derived.map(async (asset) => {
-        try {
-          const access = await apiFetch<{ url: string }>(`/api/media/${asset.id}/access`, { method: "POST" });
-          return [asset.id, access.url] as const;
-        } catch { return null; }
+        try { return [asset.id, (await apiFetch<{ url: string }>(`/api/media/${asset.id}/access`, { method: "POST" })).url] as const; }
+        catch { return null; }
       }));
       setUrls(Object.fromEntries(signed.filter((entry): entry is readonly [string, string] => Boolean(entry))));
     } catch {
-      setNotice({ tone: "error", text: "이 미션을 열 수 없어요. 알림을 받은 계정인지 확인해 주세요." });
+      setNotice({ tone: "error", text: "이 미션을 열 수 없어요. 알림을 받은 계정인지 확인해주세요." });
     }
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
-
-  const processing = useMemo(() => [payload?.memory, ...(payload?.originalArchive ?? [])]
-    .filter((memory): memory is Memory => Boolean(memory))
-    .some((memory) => findAsset(memory, "original")?.processingStatus === "pending" || findAsset(memory, "original")?.processingStatus === "processing"), [payload]);
-
+  const processing = useMemo(() => {
+    const original = findAsset(payload?.memory ?? null, "original");
+    return original?.processingStatus === "pending" || original?.processingStatus === "processing";
+  }, [payload]);
   useEffect(() => {
     if (!processing) return;
-    const timer = window.setInterval(() => void load(), 4_000);
-    return () => window.clearInterval(timer);
+    const interval = window.setInterval(() => void load(), 4_000);
+    return () => window.clearInterval(interval);
   }, [load, processing]);
 
   async function recordAudio() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const chunks: Blob[] = [];
+      const chunks: BlobPart[] = [];
       const mediaRecorder = new MediaRecorder(stream);
       recorder.current = mediaRecorder;
-      mediaRecorder.ondataavailable = (event) => chunks.push(event.data);
+      mediaRecorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
       mediaRecorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
-        setFile(new File(chunks, `moment-${Date.now()}.webm`, { type: mediaRecorder.mimeType || "audio/webm" }));
+        const mimeType = mediaRecorder.mimeType || "audio/webm";
+        setFile(new File([new Blob(chunks, { type: mimeType })], `moment-${Date.now()}.webm`, { type: mimeType }));
         setRecordingSeconds(null);
         setNotice({ tone: "success", text: "10초의 소리를 담았어요." });
       };
@@ -168,46 +233,65 @@ export function MissionView({ id }: { id: string }) {
       const timer = window.setInterval(() => setRecordingSeconds((current) => current === null ? null : Math.max(0, current - 1)), 1000);
       window.setTimeout(() => { window.clearInterval(timer); if (mediaRecorder.state === "recording") mediaRecorder.stop(); }, 10_000);
     } catch {
-      setNotice({ tone: "error", text: "마이크를 사용할 수 없어요. 브라우저 권한을 확인해 주세요." });
+      setNotice({ tone: "error", text: "마이크를 사용할 수 없어요. 브라우저 권한을 확인해주세요." });
       setRecordingSeconds(null);
     }
   }
 
-  async function complete() {
+  async function performComplete() {
     const mission = payload?.mission;
     if (!mission || busy) return;
     if (["photo", "video", "audio"].includes(mission.type) && !file) {
       setNotice({ tone: "error", text: "먼저 지금의 순간을 하나 담아주세요." });
       return;
     }
+    if (mission.type === "emotion" && !emotionId && !customEmotion.trim()) {
+      setNotice({ tone: "error", text: "지금의 마음을 하나 골라주세요." });
+      return;
+    }
     setBusy(true);
     setNotice(null);
     try {
+      const hasMedia = ["photo", "video", "audio"].includes(mission.type);
       const result = await apiFetch<{ memory: { id: string } }>(`/api/missions/${id}/complete`, {
         method: "POST",
-        body: JSON.stringify({ memoryType: mission.type, text: mission.type === "text" ? text : undefined, emotion: mission.type === "emotion" ? emotion : undefined, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({
+          memoryType: mission.type,
+          text: mission.type === "text" ? text : undefined,
+          emotionId: mission.type === "emotion" && emotionId ? emotionId : undefined,
+          customEmotion: mission.type === "emotion" && !emotionId ? customEmotion.trim() : undefined,
+          idempotencyKey: crypto.randomUUID(),
+          replaceExisting: redoing,
+          deferReplacement: redoing && hasMedia,
+        }),
       });
       if (file) {
         setProgress(0);
         await uploadFile(result.memory.id, file, setProgress);
       }
-      setNotice({ tone: "success", text: "이 순간을 조용히 보관했어요." });
-      window.setTimeout(() => window.location.assign("/home"), 900);
+      if (redoing && hasMedia) {
+        await apiFetch(`/api/missions/${id}/finalize-replacement`, { method: "POST", body: JSON.stringify({ memoryId: result.memory.id }) });
+      }
+      setNotice({ tone: "success", text: redoing ? "새로운 순간으로 바꿔 붙였어요." : "이 순간을 조용히 보관했어요." });
+      window.setTimeout(() => window.location.assign("/home"), 700);
     } catch {
       setNotice({ tone: "error", text: "지금은 보관하지 못했어요. 입력한 내용은 두고 잠시 뒤 다시 눌러주세요." });
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      setConfirmRedo(false);
+    }
+  }
+
+  function requestComplete() {
+    if (redoing) setConfirmRedo(true);
+    else void performComplete();
   }
 
   async function skip() {
     if (!payload?.mission || busy) return;
     setBusy(true);
-    try {
-      await apiFetch(`/api/missions/${id}/skip`, { method: "POST" });
-      window.location.assign("/home");
-    } catch {
-      setNotice({ tone: "error", text: "미션 상태를 바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요." });
-      setBusy(false);
-    }
+    try { await apiFetch(`/api/missions/${id}/skip`, { method: "POST" }); window.location.assign("/home"); }
+    catch { setNotice({ tone: "error", text: "미션 상태를 바꾸지 못했어요. 잠시 뒤 다시 시도해주세요." }); setBusy(false); }
   }
 
   async function downloadOriginal(memoryId: string) {
@@ -219,64 +303,60 @@ export function MissionView({ id }: { id: string }) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch {
-      setNotice({ tone: "error", text: "원본을 내려받지 못했어요. 잠시 후 다시 시도해 주세요." });
-    }
+    } catch { setNotice({ tone: "error", text: "저장하지 못했어요. 잠시 후 다시 시도해주세요." }); }
   }
 
-  async function storeOriginalVideo(fileToStore: File) {
-    if (!payload || busy) return;
+  async function deleteMemory() {
+    if (!payload?.memory || busy) return;
     setBusy(true);
-    setArchiveProgress(0);
-    setNotice(null);
     try {
-      const result = await apiFetch<{ memory: { id: string } }>("/api/memories/manual", { method: "POST", body: JSON.stringify({ dateEventId: payload.dateEvent.id, idempotencyKey: crypto.randomUUID() }) });
-      await uploadFile(result.memory.id, fileToStore, setArchiveProgress);
-      setNotice({ tone: "success", text: "원본을 보관했어요. 재생용 영상을 준비하고 있어요." });
-      await load();
+      await apiFetch(`/api/memories/${payload.memory.id}`, { method: "DELETE" });
+      setRemoving(true);
+      window.setTimeout(() => window.location.assign("/home"), 260);
     } catch {
-      setNotice({ tone: "error", text: "원본 영상을 올리지 못했어요. 같은 파일을 다시 선택하면 이어서 시도해요." });
-    } finally { setBusy(false); }
+      setNotice({ tone: "error", text: "이 순간을 떼어내지 못했어요. 완료한 계정인지 확인해주세요." });
+      setBusy(false);
+      setConfirmDelete(false);
+    }
   }
 
   if (!payload) return <MissionNote><p className="muted">작은 쪽지를 펼치고 있어요…</p>{notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}</MissionNote>;
   const mission = payload.mission;
 
-  if (mission.status === "completed" && payload.memory) {
+  if (mission.status === "completed" && payload.memory && !redoing) {
     const memory = payload.memory;
     const hasOriginal = Boolean(findAsset(memory, "original"));
-    return <div className="mission-detail-sheet">
+    return <div className={`mission-detail-sheet ${removing ? "removing" : ""}`}>
       <span className="detail-sheet-tape" aria-hidden="true" />
-      <header className="mission-detail-header"><div><p className="paper-label">{mission.isTest ? "TEST MEMORY" : "MEMORY NOTE"}</p><h1>{mission.copy.title}</h1></div><div className="sticker-row">{mission.isTest && <StatusSticker tone="test">TEST</StatusSticker>}<StatusSticker tone="done">보관 완료</StatusSticker></div></header>
-      <dl className="memory-meta"><div><dt>날짜</dt><dd>{dateFormatter.format(new Date(memory.createdAt))}</dd></div><div><dt>시간</dt><dd>{timeFormatter.format(new Date(memory.createdAt))}</dd></div><div><dt>받은 사람</dt><dd>{payload.recipient.displayName} · {payload.recipient.roleLabel}</dd></div></dl>
+      <header className="mission-detail-header"><div><p className="paper-label">{mission.isTest ? "TEST MEMORY" : "MEMORY NOTE"}</p><h1>{mission.copy.title}</h1></div><div className="sticker-row">{mission.isTest && <StatusSticker tone="test">TEST</StatusSticker>}<StatusSticker tone="done">완료</StatusSticker></div></header>
+      <dl className="memory-meta"><div><dt>날짜</dt><dd>{dateFormatter.format(new Date(memory.createdAt))}</dd></div><div><dt>시간</dt><dd>{timeFormatter.format(new Date(memory.createdAt))}</dd></div><div><dt>미션 대상</dt><dd>{payload.recipient.displayName} · {payload.recipient.roleLabel}</dd></div><div><dt>작성자</dt><dd>{memory.author?.displayName ?? "확인할 수 없음"}</dd></div></dl>
       <section className="mission-copy-note"><span aria-hidden="true">✦</span><p>{mission.copy.prompt}</p></section>
       {payload.dateEvent.note && <section className="memory-short-note"><h2>함께 적어둔 메모</h2><p>{payload.dateEvent.note}</p></section>}
       {memory.type === "text" && <blockquote className="expanded-text-memory">“{memory.text}”</blockquote>}
       {memory.type === "emotion" && <div className="expanded-emotion-memory"><span aria-hidden="true">✦</span><strong>{memory.emotion}</strong></div>}
-      <MemoryMedia memory={memory} urls={urls} onZoom={setZoomUrl} onMediaError={(text) => setNotice({ tone: "error", text })} />
-      {hasOriginal && ["photo", "video", "audio"].includes(memory.type) && <div className="original-download-row"><div><strong>원본 파일</strong><small>preview와 별도로 R2에 보관된 파일이에요.</small></div><Button variant="secondary" size="small" onClick={() => void downloadOriginal(memory.id)}>원본 {memory.type === "photo" ? "사진" : memory.type === "video" ? "영상" : "음성"} 저장</Button></div>}
-      <section className="original-archive-section"><header><p className="paper-label">ORIGINAL ARCHIVE</p><h2>원본 추가 보관</h2><p>휴대전화에 있는 원본 영상은 그대로 두고, 재생용 preview만 따로 만들어요.</p></header><label className="file-button upload-paper">원본 영상 고르기<input type="file" accept="video/*" hidden disabled={busy} onChange={(event) => { const selected = event.target.files?.[0]; if (selected) void storeOriginalVideo(selected); event.currentTarget.value = ""; }} /></label>{archiveProgress !== null && archiveProgress < 100 && <progress max={100} value={archiveProgress}>{archiveProgress}%</progress>}
-        {payload.originalArchive.length > 0 && <div className="archive-list">{payload.originalArchive.map((archive, index) => <article className="archive-paper" key={archive.id}><h3>추가 원본 {payload.originalArchive.length - index}</h3><p>{dateFormatter.format(new Date(archive.createdAt))} · {timeFormatter.format(new Date(archive.createdAt))}</p><MemoryMedia memory={archive} urls={urls} onZoom={setZoomUrl} onMediaError={(text) => setNotice({ tone: "error", text })} /><Button variant="secondary" size="small" onClick={() => void downloadOriginal(archive.id)}>원본 영상 저장</Button></article>)}</div>}
-      </section>
+      <MemoryMedia memory={memory} urls={urls} onZoom={setZoomUrl} onMediaError={(text) => setNotice({ tone: "error", text })} onRetry={() => void load()} />
+      {hasOriginal && ["photo", "video", "audio"].includes(memory.type) && <div className="original-download-row"><p>이 순간을 기기에 간직할 수 있어요.</p><Button variant="secondary" size="small" data-paper-sound="save-soft" onClick={() => void downloadOriginal(memory.id)}>{memory.type === "photo" ? "원본 사진 저장" : memory.type === "video" ? "원본 영상 저장" : "원본 음성 저장"}</Button></div>}
       {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
+      <div className="memory-detail-actions">{payload.canRedo && <Button variant="secondary" data-paper-sound="page-open" onClick={() => { setRedoing(true); setText(""); setEmotionId(""); setCustomEmotion(""); setFile(null); setNotice(null); }}>다시 하기</Button>}{payload.canDelete && <Button variant="danger" data-paper-sound="note-peel" onClick={() => setConfirmDelete(true)}>포스트잇 떼기</Button>}</div>
       {zoomUrl && <PhotoLightbox url={zoomUrl} onClose={() => setZoomUrl(null)} />}
+      {confirmDelete && <PaperConfirmDialog title="이 순간을 여기서 떼어낼까요?" description="떼어낸 기록은 30일 동안 안전하게 남아 있어요." cancelLabel="아직 남겨둘게요" confirmLabel="포스트잇 떼기" busy={busy} onCancel={() => setConfirmDelete(false)} onConfirm={() => void deleteMemory()} />}
     </div>;
   }
 
-  if (mission.status !== "sent") return <MissionNote><p className="paper-label">{mission.isTest ? "TEST NOTE" : "MISSION NOTE"}</p><h1>{mission.status === "expired" ? "이 쪽지는 조용히 지나갔어요." : mission.status === "cancelled" ? "취소된 미션이에요." : "아직 열 시간이 아니에요."}</h1>{notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}</MissionNote>;
+  if (mission.status !== "sent" && !redoing) return <MissionNote><p className="paper-label">{mission.isTest ? "TEST NOTE" : "MISSION NOTE"}</p><h1>{mission.status === "expired" ? "이 쪽지는 조용히 지나갔어요." : mission.status === "cancelled" ? "취소된 미션이에요." : "아직 열 시간이 아니에요."}</h1>{notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}</MissionNote>;
 
-  return <MissionNote>
-    <p className="paper-label">{mission.isTest ? "TEST NOTE" : "지금, 잠깐만"}</p>
+  return <MissionNote className={redoing ? "redo-note" : ""}>
+    <p className="paper-label">{redoing ? "다시 남기는 순간" : mission.isTest ? "TEST NOTE" : "지금, 잠깐만"}</p>
     <h1>{mission.copy.title}</h1>
     <p className="mission-prompt">{mission.copy.prompt}</p>
     {mission.type === "text" && <Textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={300} rows={3} placeholder="한 문장만 남겨주세요." />}
-    {mission.type === "emotion" && <div className="emotion-grid">{EMOTIONS.map((item) => <button type="button" key={item} className={emotion === item ? "selected" : ""} onClick={() => setEmotion(item)}>{item}</button>)}</div>}
-    {mission.type === "photo" && <label className="file-button upload-paper">사진 한 장 담기<input type="file" accept="image/*" capture="environment" hidden onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>}
-    {mission.type === "video" && <label className="file-button upload-paper">짧은 영상 담기<input type="file" accept="video/*" capture="environment" hidden onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>}
-    {mission.type === "audio" && <Button type="button" variant="secondary" disabled={recordingSeconds !== null} onClick={() => void recordAudio()}>{recordingSeconds === null ? "10초 소리 담기" : <span className="recording-count">{recordingSeconds}</span>}</Button>}
-    {file && <p className="selected-file-note">{file.name}</p>}
-    {progress !== null && <progress max={100} value={progress}>{progress}%</progress>}
+    {mission.type === "emotion" && <EmotionPicker emotionId={emotionId} customEmotion={customEmotion} options={mission.copy.inputMode === "choice" ? mission.copy.options : undefined} onEmotion={(value) => { setEmotionId(value); if (value) setCustomEmotion(""); }} onCustom={(value) => { setCustomEmotion(value); if (value) setEmotionId(""); }} />}
+    {mission.type === "photo" && <CapturePicker kind="photo" file={file} disabled={busy} onFile={setFile} />}
+    {mission.type === "video" && <CapturePicker kind="video" file={file} disabled={busy} onFile={setFile} />}
+    {mission.type === "audio" && <div className="audio-capture"><Button type="button" variant="secondary" disabled={recordingSeconds !== null || busy} onClick={() => void recordAudio()}>{recordingSeconds === null ? "10초 소리 담기" : <span className="recording-count">{recordingSeconds}</span>}</Button>{file && <p>소리를 담았어요. 저장하기 전까지 다시 녹음할 수 있어요.</p>}</div>}
+    {progress !== null && <div className="paper-progress"><progress max={100} value={progress}>{progress}%</progress><span>{progress}%</span></div>}
     {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
-    <div className="mission-actions"><Button disabled={busy} onClick={() => void complete()}>{busy ? "보관하고 있어요…" : "이 순간 보관하기"}</Button><Button variant="quiet" disabled={busy} onClick={() => void skip()}>이번에는 그냥 지나가기</Button></div>
+    <div className="mission-actions"><Button disabled={busy} data-paper-sound="save-soft" onClick={requestComplete}>{busy ? "보관하고 있어요…" : redoing ? "새 기록으로 바꾸기" : "이 순간 보관하기"}</Button>{redoing ? <Button variant="quiet" disabled={busy} data-paper-sound="close-paper" onClick={() => setRedoing(false)}>돌아가기</Button> : <Button variant="quiet" disabled={busy} onClick={() => void skip()}>이번에는 그냥 지나가기</Button>}</div>
+    {confirmRedo && <PaperConfirmDialog title="이 메모를 새 기록으로 바꿀까요?" description="새 기록을 모두 저장한 뒤에 지금 기록과 바꿔 붙일게요." cancelLabel="조금 더 생각할게요" confirmLabel="새 기록으로 바꾸기" busy={busy} onCancel={() => setConfirmRedo(false)} onConfirm={() => void performComplete()} />}
   </MissionNote>;
 }

@@ -34,12 +34,7 @@ export function missionFeedBucket(item: MissionFeedOrderItem, now = new Date()):
 }
 
 export function compareMissionFeed(a: MissionFeedOrderItem, b: MissionFeedOrderItem, now = new Date()): number {
-  const bucket = missionFeedBucket(a, now) - missionFeedBucket(b, now);
-  if (bucket) return bucket;
-  if (missionFeedBucket(a, now) === 0) {
-    const expiry = milliseconds(a.expiresAt) - milliseconds(b.expiresAt);
-    if (expiry) return expiry;
-  }
+  void now;
   return missionDisplayAt(b).getTime() - missionDisplayAt(a).getTime();
 }
 

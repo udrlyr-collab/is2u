@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compareCalendarEvents, compareMissionFeed, missionDisplayAt } from "@is2u/core/ordering";
 
 describe("home and calendar ordering", () => {
-  it("puts an actionable mission above completed history and sorts history newest first", () => {
+  it("sorts the unified mission timeline by arrival or completion time, newest first", () => {
     const now = new Date("2026-07-15T00:00:00.000Z");
     const items = [
       { id: "old", status: "completed" as const, scheduledAt: "2026-07-10T00:00:00.000Z", memoryCreatedAt: "2026-07-10T01:00:00.000Z" },
@@ -10,8 +10,8 @@ describe("home and calendar ordering", () => {
       { id: "recent", status: "completed" as const, scheduledAt: "2026-07-14T00:00:00.000Z", memoryCreatedAt: "2026-07-14T05:00:00.000Z" },
     ];
     items.sort((a, b) => compareMissionFeed(a, b, now));
-    expect(items.map(({ id }) => id)).toEqual(["current", "recent", "old"]);
-    expect(missionDisplayAt(items[1]).toISOString()).toBe("2026-07-14T05:00:00.000Z");
+    expect(items.map(({ id }) => id)).toEqual(["recent", "current", "old"]);
+    expect(missionDisplayAt(items[0]).toISOString()).toBe("2026-07-14T05:00:00.000Z");
   });
 
   it("orders calendar groups active, upcoming, past, cancelled with group-specific direction", () => {

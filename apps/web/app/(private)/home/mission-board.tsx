@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { seoulDayKey } from "@is2u/core/dates";
 import { InlineNotice, StatusSticker } from "../../../components/ui";
 import { apiFetch } from "../../../lib/client";
@@ -61,7 +61,7 @@ function MissionSlip({ mission, url, index }: { mission: Mission; url?: string; 
     <span className="slip-tape" aria-hidden="true" />
     <header>
       <div><p className="mission-time">{timeFormatter.format(new Date(mission.displayAt))}</p><h3>{mission.copy.title}</h3></div>
-      <div className="sticker-row">{mission.isTest && <StatusSticker tone="test">TEST</StatusSticker>}<StatusSticker tone={status.tone}>{status.label}</StatusSticker></div>
+      <div className="sticker-row"><span className={`recipient-name-tag recipient-${mission.recipient.roleLabel === "남자친구" ? "boyfriend" : "girlfriend"}`}>{mission.recipient.roleLabel}에게 온 미션</span>{mission.isTest && <StatusSticker tone="test">TEST</StatusSticker>}<StatusSticker tone={status.tone}>{status.label}</StatusSticker></div>
     </header>
     <MissionPreview mission={mission} url={url} />
     <footer><span>{mission.dateEvent.title || "함께하는 시간"}</span>{mission.canOpen && <strong>{mission.status === "completed" ? "자세히 보기 →" : "쪽지 열기 →"}</strong>}</footer>
@@ -98,28 +98,18 @@ export function MissionBoard() {
     return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, [load]);
 
-  const orderedRecipients = useMemo(() => payload ? [...payload.recipients].sort((a, b) => Number(b.id === payload.currentUserId) - Number(a.id === payload.currentUserId)) : [], [payload]);
-
   if (!payload && !error) return <div className="board-loading"><span aria-hidden="true" />미션 쪽지를 꺼내고 있어요…</div>;
 
   return <div className="mission-board">
-    <header className="home-intro"><p className="paper-label">OUR LITTLE MISSIONS</p><h1>오늘의 쪽지함</h1><p>해야 할 미션과 둘이 남긴 순간을 한곳에 모았어요.</p></header>
+    <header className="home-intro"><p className="paper-label">OUR LITTLE MOMENTS</p><h1>우리의 순간</h1><p>도착한 쪽지와 둘이 남긴 순간을 시간순으로 붙여두었어요.</p></header>
     {error && <InlineNotice tone="error">{error}</InlineNotice>}
     {payload && payload.missions.length === 0 && <section className="empty-board"><span className="empty-tape" aria-hidden="true" /><h2>아직 도착한 쪽지가 없어요.</h2><p>약속한 시간이 오면 여기에 작은 미션이 붙어요.</p></section>}
-    {payload && orderedRecipients.map((recipient, recipientIndex) => {
-      const recipientMissions = payload.missions.filter((mission) => mission.recipient.id === recipient.id);
-      if (!recipientMissions.length) return null;
-      const days = [...new Set(recipientMissions.map((mission) => seoulDayKey(mission.displayAt)))];
-      return <section className={`recipient-board recipient-${recipientIndex}`} key={recipient.id}>
-        <header className="recipient-heading"><span className="recipient-sticker">{recipient.roleLabel}</span><div><h2>{recipient.displayName}에게 온 미션</h2><p>{recipient.id === payload.currentUserId ? "내가 펼칠 쪽지를 먼저 모았어요." : "상대에게 도착한 쪽지도 함께 보여요."}</p></div></header>
-        {days.map((day) => {
-          const dayMissions = recipientMissions.filter((mission) => seoulDayKey(mission.displayAt) === day);
-          return <div className="mission-day" key={day}>
-            <h3 className="day-divider"><span>{dayFormatter.format(new Date(dayMissions[0].displayAt))}</span><i aria-hidden="true" /></h3>
-            <div className="mission-slips">{dayMissions.map((mission, index) => { const preview = pickPreview(mission); return <MissionSlip key={mission.id} mission={mission} url={preview ? urls[preview.id] : undefined} index={index} />; })}</div>
-          </div>;
-        })}
-      </section>;
-    })}
+    {payload && <section className="unified-timeline">{[...new Set(payload.missions.map((mission) => seoulDayKey(mission.displayAt)))].map((day) => {
+      const dayMissions = payload.missions.filter((mission) => seoulDayKey(mission.displayAt) === day);
+      return <div className="mission-day" key={day}>
+        <h2 className="day-divider"><span>{dayFormatter.format(new Date(dayMissions[0].displayAt))}</span><i aria-hidden="true" /></h2>
+        <div className="mission-slips">{dayMissions.map((mission, index) => { const preview = pickPreview(mission); return <MissionSlip key={mission.id} mission={mission} url={preview ? urls[preview.id] : undefined} index={index} />; })}</div>
+      </div>;
+    })}</section>}
   </div>;
 }

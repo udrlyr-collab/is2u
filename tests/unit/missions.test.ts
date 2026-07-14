@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedMissionIntervals, canCreateActualMission, canDeliverActualMission, chooseMissionTime, chooseMissionType, chooseRecipient, seoulWeekBounds } from "@is2u/core/missions";
+import { allowedMissionIntervals, canCreateActualMission, canDeliverActualMission, chooseMissionTemplate, chooseMissionTime, chooseMissionType, chooseRecipient, seoulWeekBounds } from "@is2u/core/missions";
 
 describe("mission scheduling", () => {
   it("waits 20 minutes and leaves 15 minutes before the end", () => {
@@ -49,6 +49,11 @@ describe("mission scheduling", () => {
 
   it("never immediately repeats a mission type", () => {
     for (let index = 0; index < 20; index += 1) expect(chooseMissionType("photo", () => index / 20)).not.toBe("photo");
+  });
+
+  it("excludes recently used templates and can constrain the input type", () => {
+    expect(chooseMissionTemplate(["photo-now"], "photo", () => 0).id).not.toBe("photo-now");
+    expect(chooseMissionTemplate([], "audio", () => 0).type).toBe("audio");
   });
 
   it("balances recipients and uses random only for a tie", () => {

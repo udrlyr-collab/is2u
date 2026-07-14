@@ -19,6 +19,7 @@ cd /opt/is2u/releases/`$release/infra
 export IS2U_RELEASE=`$release
 export IS2U_ENV_FILE=/opt/is2u/shared/.env
 docker compose --env-file /opt/is2u/shared/.env build
+docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm backup:now
 docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm db:migrate
 docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm db:seed
 docker compose --env-file /opt/is2u/shared/.env up -d --remove-orphans

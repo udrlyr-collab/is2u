@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray, lt, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
 import { dateEvents, mediaAssets, memories, missions, users } from "@is2u/db/schema";
-import { MISSION_COPY } from "@is2u/core/types";
+import { getMissionTemplate } from "@is2u/core/types";
 import { compareMissionFeed, missionDisplayAt } from "@is2u/core/ordering";
 import { requireSession } from "../../../lib/auth";
 import { json, withApiErrors } from "../../../lib/http";
@@ -21,10 +21,13 @@ export const GET = withApiErrors(async (request: Request) => {
 
   const missionIds = rows.map(({ mission }) => mission.id);
   const memoryRows = missionIds.length
-    ? await db.select().from(memories).where(inArray(memories.missionId, missionIds))
+    ? await db.select().from(memories).where(and(
+      inArray(memories.missionId, missionIds),
+      isNull(memories.deletedAt),
+      eq(memories.pendingReplacement, false),
+    )).orderBy(desc(memories.createdAt))
     : [];
-  const visibleMemories = memoryRows.filter((memory) => !memory.deletedAt);
-  const memoryIds = visibleMemories.map((memory) => memory.id);
+  const memoryIds = memoryRows.map((memory) => memory.id);
   const assets = memoryIds.length
     ? await db.select({ id: mediaAssets.id, memoryId: mediaAssets.memoryId, role: mediaAssets.role, mimeType: mediaAssets.mimeType, processingStatus: mediaAssets.processingStatus })
       .from(mediaAssets)
@@ -33,7 +36,7 @@ export const GET = withApiErrors(async (request: Request) => {
   const recipients = await db.select({ id: users.id, displayName: users.displayName, roleLabel: users.roleLabel }).from(users);
 
   const feed = rows.map(({ mission, dateEvent, recipient }) => {
-      const memory = visibleMemories.find((candidate) => candidate.missionId === mission.id) ?? null;
+      const memory = memoryRows.find((candidate) => candidate.missionId === mission.id) ?? null;
       const displayAt = missionDisplayAt({ ...mission, memoryCreatedAt: memory?.createdAt });
       return {
         id: mission.id,
@@ -47,7 +50,7 @@ export const GET = withApiErrors(async (request: Request) => {
         displayAt,
         recipient: { id: recipient.id, displayName: recipient.displayName, roleLabel: recipient.roleLabel },
         dateEvent: { id: dateEvent.id, title: dateEvent.title, startAt: dateEvent.startAt, endAt: dateEvent.endAt, status: dateEvent.status },
-        copy: MISSION_COPY[mission.type],
+        copy: getMissionTemplate(mission.templateId, mission.type),
         canOpen: (mission.recipientId === session.user.id && mission.status === "sent") || (mission.status === "completed" && Boolean(memory)),
         memory: memory ? {
           id: memory.id,
@@ -58,7 +61,7 @@ export const GET = withApiErrors(async (request: Request) => {
           assets: assets.filter((asset) => asset.memoryId === memory.id && asset.role !== "original"),
         } : null,
       };
-    });
+    }).filter((item) => item.status !== "completed" || Boolean(item.memory));
   feed.sort((a, b) => compareMissionFeed(
     { ...a, memoryCreatedAt: a.memory?.createdAt },
     { ...b, memoryCreatedAt: b.memory?.createdAt },

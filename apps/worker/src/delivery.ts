@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
 import { dateEvents, missions, pushSubscriptions } from "@is2u/db/schema";
 import { getServerEnv } from "@is2u/core/env";
-import { MISSION_COPY } from "@is2u/core/types";
+import { getMissionTemplate } from "@is2u/core/types";
 import { canDeliverActualMission } from "@is2u/core/missions";
 
 export async function deliverMission(missionId: string): Promise<void> {
@@ -24,7 +24,8 @@ export async function deliverMission(missionId: string): Promise<void> {
   const env = getServerEnv();
   webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
   const subscriptions = await db.select().from(pushSubscriptions).where(and(eq(pushSubscriptions.userId, row.mission.recipientId), isNull(pushSubscriptions.invalidatedAt)));
-  const payload = JSON.stringify({ title: MISSION_COPY[row.mission.type].title, body: MISSION_COPY[row.mission.type].prompt, url: `/missions/${missionId}`, missionId });
+  const copy = getMissionTemplate(row.mission.templateId, row.mission.type);
+  const payload = JSON.stringify({ title: copy.title, body: copy.prompt, url: `/missions/${missionId}`, missionId });
   await Promise.all(subscriptions.map(async (subscription) => {
     try {
       await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, payload, { TTL: 1800, urgency: "normal" });

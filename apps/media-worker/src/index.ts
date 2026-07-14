@@ -42,6 +42,7 @@ function responseHeaders(env: Env, contentType: string, etag?: string): Headers 
     "Cache-Control": "public, max-age=31536000, immutable",
     "Access-Control-Allow-Origin": env.APP_ORIGIN,
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range",
     "Access-Control-Expose-Headers": "Content-Length, Content-Range, ETag, Accept-Ranges",
     "Accept-Ranges": "bytes",
     "X-Content-Type-Options": "nosniff",

@@ -13,6 +13,20 @@ async function sign(payload: Record<string, unknown>, secret: string): Promise<s
 }
 
 describe("media worker asset binding", () => {
+  it("allows browser range preflight requests", async () => {
+    const response = await mediaWorker.fetch(
+      new Request("https://media.is2u.today/v1/asset", {
+        method: "OPTIONS",
+        headers: { Origin: "https://is2u.today", "Access-Control-Request-Headers": "range" },
+      }),
+      { MEDIA_TOKEN_SECRET: "secret", APP_ORIGIN: "https://is2u.today", MEDIA: {} as R2Bucket },
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-headers")).toBe("Range");
+    expect(response.headers.get("access-control-expose-headers")).toContain("Content-Range");
+  });
+
   it("rejects a valid token used with a different asset path", async () => {
     const secret = "media-worker-test-secret";
     const token = await sign({
