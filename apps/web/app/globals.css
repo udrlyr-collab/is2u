@@ -1229,6 +1229,8 @@ h3 { margin-bottom: var(--space-2); }
 .rope.mode-linking.selected .rope-cord, .rope.mode-hanging.selected .rope-cord { filter: drop-shadow(0 0 2px rgb(255 248 223 / 0.9)); }
 
 .board-toolbox { position: fixed; z-index: 90; top: 6.2rem; right: max(1rem, calc((100% - var(--page-max-width)) / 2 + 1rem)); bottom: 1.2rem; width: min(22rem, calc(100% - 2rem)); height: auto; max-height: none; grid-template-rows: auto minmax(0, 1fr); margin: 0; background: #fff8df; border-radius: 8px 11px 7px 10px; transform: none; box-shadow: 4px 5px 0 rgb(48 43 40 / 0.16); overflow: hidden; }
+.board-toolbox { pointer-events: none; }
+.board-toolbox > header, .board-toolbox > .board-tool-content, .board-sheet-grab-zone { pointer-events: auto; }
 .board-sheet-grab-zone { display: none; }
 .board-toolbox > header { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.45rem 0.7rem; }
 .board-toolbox > header > div:first-child { min-width: 0; display: flex; align-items: center; gap: 0.42rem; }
