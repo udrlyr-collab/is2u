@@ -1064,7 +1064,7 @@ h3 { margin-bottom: var(--space-2); }
 .board-miniature .board-artwork { box-shadow: none; }
 .board-miniature .board-piece { pointer-events: none; }
 .board-miniature .board-thread-layer { pointer-events: none; }
-.board-share-capture { position: fixed; z-index: -100; top: 0; left: -10000px; width: 1800px; height: 1400px; overflow: hidden; pointer-events: none; }
+.board-share-capture { position: fixed; z-index: 80; top: 0; left: 0; width: 1800px; height: 1400px; overflow: hidden; pointer-events: none; }
 .board-share-capture .board-piece { pointer-events: none; }
 
 .board-thread-layer .rope-warm-brown .rope-cord,
