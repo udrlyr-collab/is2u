@@ -1283,7 +1283,7 @@ h3 { margin-bottom: var(--space-2); }
 }
 
 @media (max-width: 739px) {
-  .board-toolbox { top: auto; right: 0.55rem; bottom: calc(4.9rem + env(safe-area-inset-bottom)); left: 0.55rem; width: auto; height: var(--sheet-expanded-height); max-height: none; grid-template-rows: 44px 52px minmax(0, 1fr); border-radius: 13px 13px 5px 5px; transform: translateY(var(--sheet-translate)); transition: transform 190ms ease-out; will-change: transform; contain: layout paint; }
+  .board-toolbox { top: auto; right: 0.55rem; bottom: calc(4.9rem + env(safe-area-inset-bottom)); left: 0.55rem; width: auto; height: var(--sheet-expanded-height); max-height: none; grid-template-rows: 44px 52px minmax(0, 1fr); border-radius: 13px 13px 5px 5px; transform: translateY(var(--sheet-translate)); clip-path: inset(0 0 var(--sheet-translate) 0); transition: transform 190ms ease-out, clip-path 190ms ease-out; will-change: transform, clip-path; contain: layout paint; }
   .board-toolbox[data-sheet-dragging="true"] { transition: none; }
   .board-sheet-grab-zone { display: grid; min-height: 44px; place-items: center; border: 0; background: transparent; touch-action: none; cursor: ns-resize; }
   .board-sheet-grab-zone i { width: 42px; height: 4px; border-radius: 3px; background: rgb(123 109 100 / 0.48); box-shadow: 0 1px 0 rgb(255 255 255 / 0.5); }
