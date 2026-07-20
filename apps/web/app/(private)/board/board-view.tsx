@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { Button, Field, InlineNotice, Input, Textarea } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
 import { DetailBackLink, DetailTopline } from "../../../components/detail-topline";
@@ -25,7 +26,7 @@ import { AttachmentPicker, PaperSwatches, StickerPicker, StickerVariantPicker } 
 import { BoardArtwork, BoardNotePaper, MemoryDetailCard } from "./board-renderer";
 import { StickerGraphic } from "./board-sticker-graphic";
 import { BoardBottomSheet, type BoardBottomSheetHandle } from "./board-bottom-sheet";
-import { boundedGroupDelta, clamp as clampNumber, hangingLayout, hangingPath, linkingPaths, threadControlPoint } from "./board-geometry";
+import { boundedGroupDelta, clamp as clampNumber, hangingLayout, hangingPath, linkingPaths, moveThreadMember, threadControlPoint } from "./board-geometry";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -393,16 +394,201 @@ function BundleSpread({ group, isClosing, onClose, onOpenDetail }: { group: NonN
   </section>;
 }
 
+type ThreadOrderDrag = {
+  pointerId: number;
+  itemId: string;
+  index: number;
+  offsetX: number;
+  offsetY: number;
+  clientX: number;
+  clientY: number;
+  originalOrder: string[];
+};
+
+type ThreadOrderVisual = {
+  itemId: string;
+  width: number;
+  height: number;
+};
+
+function sameThreadOrder(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
 function ThreadMemberOrder({ thread, itemMap, onPreview, onCommit, onDetach }: { thread: BoardThread; itemMap: Map<string, BoardItem>; onPreview: (ids: string[]) => void; onCommit: (ids: string[]) => void; onDetach: (id: string) => void }) {
   const [order, setOrder] = useState(thread.itemIds);
+  const [dragVisual, setDragVisual] = useState<ThreadOrderVisual | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const orderRef = useRef(thread.itemIds);
-  const drag = useRef<{ pointerId: number; index: number } | null>(null);
-  useEffect(() => { setOrder(thread.itemIds); orderRef.current = thread.itemIds; }, [thread.id, thread.itemIds]);
-  function reorder(from: number, to: number) { if (from === to) return; setOrder((current) => { const next = [...current]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); orderRef.current = next; onPreview(next); return next; }); }
-  return <ol className="thread-member-list" aria-label="연결 순서">{order.map((id, index) => { const item = itemMap.get(id); const url = item ? itemAssetUrl(item) : undefined; return <li key={id} data-thread-order={index}>
-    <button type="button" className="thread-order-grip" aria-label={`${item ? paperLabel(item) : "추억"} 순서 옮기기`} onPointerDown={(event) => { event.preventDefault(); drag.current = { pointerId: event.pointerId, index }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (drag.current?.pointerId !== event.pointerId) return; const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-thread-order]"); const targetIndex = Number(target?.dataset.threadOrder); if (Number.isInteger(targetIndex) && targetIndex !== drag.current.index) { const from = drag.current.index; drag.current.index = targetIndex; reorder(from, targetIndex); } }} onPointerUp={(event) => { if (drag.current?.pointerId !== event.pointerId) return; drag.current = null; onCommit(orderRef.current); }} onPointerCancel={() => { drag.current = null; setOrder(thread.itemIds); orderRef.current = thread.itemIds; }}><span aria-hidden="true">≋</span>{url ? <img src={url} alt="" draggable={false} /> : <i aria-hidden="true">▧</i>}<strong>{item ? paperLabel(item) : "추억"}</strong></button>
-    <button type="button" onClick={() => onDetach(id)}>실에서 분리하기</button>
-  </li>; })}</ol>;
+  const listRef = useRef<HTMLOListElement>(null);
+  const floatingRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<ThreadOrderDrag | null>(null);
+  const dragFrame = useRef<number | null>(null);
+
+  useEffect(() => {
+    setOrder(thread.itemIds);
+    orderRef.current = thread.itemIds;
+  }, [thread.id, thread.itemIds]);
+
+  useEffect(() => () => {
+    if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+  }, []);
+
+  function paintFloatingMember() {
+    const active = drag.current;
+    const floating = floatingRef.current;
+    if (!active || !floating) return;
+    floating.style.transform = `translate3d(${active.clientX - active.offsetX}px, ${active.clientY - active.offsetY}px, 0)`;
+  }
+
+  useLayoutEffect(() => {
+    if (dragVisual) paintFloatingMember();
+  }, [dragVisual]);
+
+  function scheduleFloatingMember(clientX: number, clientY: number) {
+    const active = drag.current;
+    if (!active) return;
+    active.clientX = clientX;
+    active.clientY = clientY;
+    if (dragFrame.current !== null) return;
+    dragFrame.current = requestAnimationFrame(() => {
+      dragFrame.current = null;
+      paintFloatingMember();
+    });
+  }
+
+  function reorder(from: number, to: number) {
+    if (from === to) return orderRef.current;
+    const next = moveThreadMember(orderRef.current, from, to);
+    orderRef.current = next;
+    setOrder(next);
+    onPreview(next);
+    return next;
+  }
+
+  function finishDrag(pointerId: number, cancelled: boolean) {
+    const active = drag.current;
+    if (!active || active.pointerId !== pointerId) return;
+    drag.current = null;
+    if (dragFrame.current !== null) {
+      cancelAnimationFrame(dragFrame.current);
+      dragFrame.current = null;
+    }
+    setDragVisual(null);
+    if (cancelled) {
+      orderRef.current = active.originalOrder;
+      setOrder(active.originalOrder);
+      onPreview(active.originalOrder);
+      setAnnouncement("순서 이동을 취소했어요");
+      return;
+    }
+    if (!sameThreadOrder(orderRef.current, active.originalOrder)) {
+      onCommit(orderRef.current);
+      const movedIndex = orderRef.current.indexOf(active.itemId);
+      const movedItem = itemMap.get(active.itemId);
+      setAnnouncement(`${movedItem ? paperLabel(movedItem) : "추억"} 순서를 ${movedIndex + 1}번째로 옮겼어요`);
+    }
+  }
+
+  function moveWithKeyboard(id: string, index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= orderRef.current.length) return;
+    const next = reorder(index, targetIndex);
+    onCommit(next);
+    const item = itemMap.get(id);
+    setAnnouncement(`${item ? paperLabel(item) : "추억"} 순서를 ${targetIndex + 1}번째로 옮겼어요`);
+  }
+
+  const floatingItem = dragVisual ? itemMap.get(dragVisual.itemId) : undefined;
+  const floatingUrl = floatingItem ? itemAssetUrl(floatingItem) : undefined;
+
+  return <>
+    <ol
+      ref={listRef}
+      className="thread-member-list"
+      aria-label="연결 순서"
+      onPointerMove={(event) => {
+        const active = drag.current;
+        if (!active || active.pointerId !== event.pointerId) return;
+        scheduleFloatingMember(event.clientX, event.clientY);
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-thread-order-id]");
+        const targetId = target?.dataset.threadOrderId;
+        if (!targetId || targetId === active.itemId) return;
+        const from = orderRef.current.indexOf(active.itemId);
+        const to = orderRef.current.indexOf(targetId);
+        if (from < 0 || to < 0 || from === to) return;
+        reorder(from, to);
+        active.index = to;
+      }}
+      onPointerUp={(event) => {
+        if (drag.current?.pointerId !== event.pointerId) return;
+        finishDrag(event.pointerId, false);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={(event) => finishDrag(event.pointerId, true)}
+      onLostPointerCapture={(event) => finishDrag(event.pointerId, true)}
+    >
+      {order.map((id, index) => {
+        const item = itemMap.get(id);
+        const url = item ? itemAssetUrl(item) : undefined;
+        const isHeld = dragVisual?.itemId === id;
+        const label = item ? paperLabel(item) : "추억";
+        return <li key={id} className={isHeld ? "is-drag-placeholder" : undefined} data-thread-order-id={id}>
+          <button
+            type="button"
+            className={`thread-order-grip${isHeld ? " is-held" : ""}`}
+            aria-label={`${label}, 연결 순서 ${index + 1}/${order.length}, 위아래 방향키로도 옮길 수 있어요`}
+            aria-describedby="thread-order-instructions"
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+              event.preventDefault();
+              moveWithKeyboard(id, index, event.key === "ArrowUp" ? -1 : 1);
+            }}
+            onPointerDown={(event) => {
+              if (!event.isPrimary || event.button !== 0) return;
+              event.preventDefault();
+              event.currentTarget.focus({ preventScroll: true });
+              const rect = event.currentTarget.getBoundingClientRect();
+              drag.current = {
+                pointerId: event.pointerId,
+                itemId: id,
+                index,
+                offsetX: event.clientX - rect.left,
+                offsetY: event.clientY - rect.top,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                originalOrder: [...orderRef.current],
+              };
+              setAnnouncement("");
+              setDragVisual({ itemId: id, width: rect.width, height: rect.height });
+              try {
+                listRef.current?.setPointerCapture(event.pointerId);
+              } catch {
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }
+            }}
+          >
+            <span aria-hidden="true">≋</span>
+            {url ? <img src={url} alt="" draggable={false} /> : <i aria-hidden="true">▧</i>}
+            <strong>{label}</strong>
+          </button>
+          <button type="button" onClick={() => onDetach(id)}>실에서 분리하기</button>
+        </li>;
+      })}
+    </ol>
+    <span id="thread-order-instructions" className="visually-hidden">항목을 누른 채 움직이거나 위아래 방향키로 연결 순서를 바꿀 수 있어요</span>
+    <span className="visually-hidden" aria-live="polite">{announcement}</span>
+    {dragVisual && typeof document !== "undefined" && createPortal(
+      <div ref={floatingRef} className="thread-order-floating" style={{ width: dragVisual.width, height: dragVisual.height }} aria-hidden="true">
+        <div className="thread-order-floating-paper">
+          <span>≋</span>
+          {floatingUrl ? <img src={floatingUrl} alt="" draggable={false} /> : <i>▧</i>}
+          <strong>{floatingItem ? paperLabel(floatingItem) : "추억"}</strong>
+        </div>
+      </div>,
+      document.body,
+    )}
+  </>;
 }
 
 export function BoardView({ boardId }: { boardId: string }) {

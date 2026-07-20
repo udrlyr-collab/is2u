@@ -121,6 +121,22 @@ describe("board rendering contracts", () => {
     expect(view).toContain('itemElement.style.top = `${item.y}px`');
   });
 
+  it("lifts a thread member into a pointer-following paper preview while reordering", async () => {
+    const [view, styles] = await Promise.all([readFile(VIEW_PATH, "utf8"), readFile(STYLES_PATH, "utf8")]);
+    expect(view).toContain('import { createPortal } from "react-dom"');
+    expect(view).toContain("thread-order-floating");
+    expect(view).toContain("translate3d(${active.clientX - active.offsetX}px, ${active.clientY - active.offsetY}px, 0)");
+    expect(view).toContain("requestAnimationFrame");
+    expect(view).toContain("data-thread-order-id");
+    expect(view).toContain("onLostPointerCapture");
+    expect(view).toContain("onPreview(active.originalOrder)");
+    expect(view).toContain('event.key !== "ArrowUp" && event.key !== "ArrowDown"');
+    expect(styles).toMatch(/\.thread-order-floating\s*\{[^}]*position:\s*fixed[^}]*pointer-events:\s*none/s);
+    expect(styles).toMatch(/\.thread-order-grip\s*\{[^}]*cursor:\s*grab/s);
+    expect(styles).toContain(".thread-order-grip.is-held");
+    expect(styles).toContain(".thread-member-list li.is-drag-placeholder");
+  });
+
   it("keeps the toolbox controls legible inside its own narrow column", async () => {
     const [view, styles] = await Promise.all([readFile(VIEW_PATH, "utf8"), readFile(STYLES_PATH, "utf8")]);
     expect(view).toContain('<span className="multi-mode-toggle-label">여러 장 선택</span>');

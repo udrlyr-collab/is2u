@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { normalizeMissionIntervalInputs } from "@is2u/core/mission-interval";
-import { boundedGroupDelta, hangingLayout, hangingPoint, linkingPaths, threadControlPoint } from "../../apps/web/app/(private)/board/board-geometry";
+import { boundedGroupDelta, hangingLayout, hangingPoint, linkingPaths, moveThreadMember, threadControlPoint } from "../../apps/web/app/(private)/board/board-geometry";
 import type { BoardItem, BoardThread } from "../../apps/web/app/(private)/board/board-types";
 
 describe("login, interval inputs and memory boards", () => {
@@ -19,6 +19,14 @@ describe("login, interval inputs and memory boards", () => {
     expect(linkingPaths(linking, new Map([[first.id, first], [second.id, second]]))[0]).toMatch(/^M 460 345 Q /);
     expect(threadControlPoint(linking, new Map([[first.id, first], [second.id, second]]))).toEqual({ x: 460, y: 345 });
     expect(threadControlPoint({ ...thread, mode: "hanging" }, new Map())).toMatchObject({ x: 300, y: 150 });
+  });
+  it("moves thread members without mutating the saved order", () => {
+    const order = ["first", "second", "third"];
+    expect(moveThreadMember(order, 1, 2)).toEqual(["first", "third", "second"]);
+    expect(moveThreadMember(order, 1, 1)).toEqual(order);
+    expect(moveThreadMember(order, -1, 2)).toEqual(order);
+    expect(moveThreadMember(order, 1, 4)).toEqual(order);
+    expect(order).toEqual(["first", "second", "third"]);
   });
   it("allows empty mobile interval input and normalizes on commit", () => {
     expect(normalizeMissionIntervalInputs("5", "90", { min: 40, max: 90 }, "min")).toEqual({ min: 10, max: 90 });

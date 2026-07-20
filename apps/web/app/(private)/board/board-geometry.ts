@@ -67,3 +67,13 @@ export function boundedGroupDelta(items: BoardItem[], requestedDx: number, reque
     dy: clamp(requestedDy, -minY, BOARD_HEIGHT - maxY),
   };
 }
+
+export function moveThreadMember<T>(order: readonly T[], from: number, to: number) {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= order.length || to >= order.length || from === to) {
+    return [...order];
+  }
+  const next = [...order];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}

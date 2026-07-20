@@ -1256,11 +1256,17 @@ h3 { margin-bottom: var(--space-2); }
 .thread-curve-controls { display: grid; grid-template-columns: auto minmax(5rem, 1fr) auto; align-items: center; gap: 0.35rem; }
 .thread-curve-controls button { min-height: 44px; padding: 0.35rem 0.45rem; border: 0; background: #fffdf9; color: var(--foreground); font-size: 0.68rem; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.12); }
 .thread-mode-label { justify-self: start; padding: 0.25rem 0.45rem; background: #e4eff3; color: #5f5960; font-family: var(--font-note); font-size: 0.68rem; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.1); transform: rotate(-0.35deg); }
-.thread-member-list li { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.thread-member-list li { grid-template-columns: minmax(0, 1fr) auto; align-items: center; transition: background 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
 .thread-member-list li > button:last-child { padding-inline: 0.5rem; color: #84544f; background: #f4d7d2; }
-.thread-order-grip { min-width: 0; display: grid; grid-template-columns: 22px 46px minmax(0, 1fr); align-items: center; gap: 0.35rem; padding: 0.25rem; text-align: left; touch-action: none; }
-.thread-order-grip img, .thread-order-grip i { width: 44px; height: 44px; object-fit: cover; background: #eee5dc; }
-.thread-order-grip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; }
+.thread-order-grip { min-width: 0; display: grid; grid-template-columns: 22px 46px minmax(0, 1fr); align-items: center; gap: 0.35rem; padding: 0.25rem; text-align: left; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.thread-order-grip:active, .thread-order-grip.is-held { cursor: grabbing; }
+.thread-member-list li.is-drag-placeholder { background: #f6ede2; outline: 1px dashed rgb(123 109 100 / 0.4); outline-offset: -2px; box-shadow: inset 1px 2px 0 rgb(70 50 40 / 0.08); }
+.thread-member-list li.is-drag-placeholder > * { opacity: 0.24; pointer-events: none; }
+.thread-order-grip img, .thread-order-grip i, .thread-order-floating img, .thread-order-floating i { width: 44px; height: 44px; display: grid; place-items: center; object-fit: cover; background: #eee5dc; font-style: normal; }
+.thread-order-grip strong, .thread-order-floating strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; }
+.thread-order-floating { position: fixed; z-index: 10000; top: 0; left: 0; box-sizing: border-box; pointer-events: none; will-change: transform; transform: translate3d(-200vw, -200vh, 0); }
+.thread-order-floating-paper { width: 100%; min-height: 100%; box-sizing: border-box; display: grid; grid-template-columns: 22px 46px minmax(0, 1fr); align-items: center; gap: 0.35rem; padding: 0.25rem; border: 1px solid rgb(123 109 100 / 0.2); border-radius: 5px 7px 6px 4px; background: #fffdf9; color: var(--foreground); box-shadow: 4px 6px 0 rgb(70 50 40 / 0.18); transform: rotate(-0.45deg) scale(1.025); transform-origin: center; cursor: grabbing; animation: thread-member-lift 140ms ease-out both; }
+@keyframes thread-member-lift { from { box-shadow: 1px 2px 0 rgb(70 50 40 / 0.11); transform: rotate(0) scale(1); } }
 .thread-swatch-list i { height: 7px; border: 1px solid rgb(70 50 40 / 0.16); box-shadow: 0 2px 0 rgb(70 50 40 / 0.13); }
 
 .board-bundle-spread { position: absolute; z-index: 80; inset: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.7rem; padding: clamp(0.7rem, 2vw, 1.25rem); overflow: hidden; }
@@ -1322,6 +1328,8 @@ h3 { margin-bottom: var(--space-2); }
 @media (prefers-reduced-motion: reduce) {
   .board-toolbox { transition-duration: 1ms !important; }
   .bundle-memory-collage > div { transform: none; }
+  .thread-member-list li { transition: none; }
+  .thread-order-floating-paper { animation: none; transform: none; }
 }
 
 /* ==========================================================================
