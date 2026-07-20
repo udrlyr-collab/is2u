@@ -19,28 +19,51 @@ const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul",
 
 function BoardSurface() {
   const id = useId().replaceAll(":", "");
-  const corkPattern = `cork-${id}`;
-  const corkLight = `cork-light-${id}`;
+  const corkBase = `cork-base-${id}`;
+  const corkShade = `cork-shade-${id}`;
+  const corkDarkSpecks = `cork-dark-specks-${id}`;
+  const corkLightSpecks = `cork-light-specks-${id}`;
+  const corkPores = `cork-pores-${id}`;
+  const corkFibers = `cork-fibers-${id}`;
   return <svg className="board-surface" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} width={BOARD_WIDTH} height={BOARD_HEIGHT} preserveAspectRatio="none" aria-hidden="true" focusable="false">
     <defs>
-      <linearGradient id={corkLight} x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stopColor="#d7b47e" />
-        <stop offset="0.48" stopColor="#cba36d" />
-        <stop offset="1" stopColor="#b98b58" />
+      <linearGradient id={corkBase} gradientUnits="userSpaceOnUse" x1="26" y1="26" x2={BOARD_WIDTH - 26} y2={BOARD_HEIGHT - 26}>
+        <stop offset="0" stopColor="#d8b681" />
+        <stop offset="0.5" stopColor="#caa16d" />
+        <stop offset="1" stopColor="#b98a58" />
       </linearGradient>
-      <pattern id={corkPattern} width="74" height="62" patternUnits="userSpaceOnUse">
-        <rect width="74" height="62" fill={`url(#${corkLight})`} />
-        <circle cx="10" cy="9" r="2.2" fill="#7c4d2f" opacity="0.28" />
-        <circle cx="29" cy="23" r="2.8" fill="#f4dcae" opacity="0.34" />
-        <circle cx="57" cy="13" r="1.6" fill="#7b4b2f" opacity="0.23" />
-        <circle cx="66" cy="49" r="2.4" fill="#8b5634" opacity="0.2" />
-        <circle cx="22" cy="52" r="1.8" fill="#f5deb0" opacity="0.26" />
-        <path d="M2 35c13-5 24 4 38-1M39 47c9-4 18-2 30-8M20 15c8 2 15 1 25-3" fill="none" stroke="#7b4d31" strokeWidth="1.2" strokeLinecap="round" opacity="0.18" />
-        <path d="M5 55c11-3 22-1 31 3M47 28c7 1 13 5 22 2" fill="none" stroke="#f7e4bd" strokeWidth="1.1" strokeLinecap="round" opacity="0.24" />
+      <radialGradient id={corkShade} gradientUnits="userSpaceOnUse" cx={BOARD_WIDTH * 0.42} cy={BOARD_HEIGHT * 0.38} r={BOARD_WIDTH * 0.72}>
+        <stop offset="0" stopColor="#ffeac0" stopOpacity="0.16" />
+        <stop offset="0.56" stopColor="#ffeac0" stopOpacity="0.02" />
+        <stop offset="1" stopColor="#6d432b" stopOpacity="0.17" />
+      </radialGradient>
+      <pattern id={corkDarkSpecks} width="49" height="43" patternUnits="userSpaceOnUse">
+        <ellipse cx="11" cy="8" rx="1.6" ry="1.25" fill="#674128" opacity="0.2" />
+        <circle cx="37" cy="30" r="0.8" fill="#70462c" opacity="0.17" />
+      </pattern>
+      <pattern id={corkLightSpecks} width="61" height="53" patternUnits="userSpaceOnUse">
+        <ellipse cx="27" cy="22" rx="2.1" ry="1.7" fill="#ffe8b8" opacity="0.23" />
+        <circle cx="54" cy="9" r="0.9" fill="#f7ddb0" opacity="0.18" />
+      </pattern>
+      <pattern id={corkPores} width="73" height="67" patternUnits="userSpaceOnUse">
+        <ellipse cx="42" cy="17" rx="3" ry="2.1" fill="#775033" opacity="0.1" />
+        <circle cx="9" cy="52" r="1.7" fill="#6c4329" opacity="0.14" />
+        <circle cx="62" cy="44" r="1.2" fill="#f2d7a5" opacity="0.14" />
+      </pattern>
+      <pattern id={corkFibers} width="257" height="211" patternUnits="userSpaceOnUse">
+        <path d="M8 39c12-4 23 4 37-2M76 22c9 3 17 2 28-2M129 56c15-4 29-2 46-8M37 111c14 5 29 4 44-1M151 139c17-6 34-4 52-10M91 184c13-2 25 2 39-2" fill="none" stroke="#765036" strokeWidth="1.2" strokeLinecap="round" opacity="0.14" />
+        <path d="M24 74c11-1 21 3 34 0M104 96c18 3 31-4 48 0M188 35c13 2 26 1 42-4M14 164c15-5 31-2 48-7M182 183c17 4 30 1 51 2" fill="none" stroke="#f7e1b5" strokeWidth="1.1" strokeLinecap="round" opacity="0.18" />
+        <path d="M18 24l48 22M103 37l59 27M181 91l53 24M42 143l61 27M132 174l57 25" fill="none" stroke="#f8e5bd" strokeWidth="1" strokeLinecap="round" opacity="0.055" />
+        <path d="M27 192l46-22M91 126l54-25M168 58l51-24M185 166l39-18" fill="none" stroke="#70472e" strokeWidth="1" strokeLinecap="round" opacity="0.04" />
       </pattern>
     </defs>
     <rect width={BOARD_WIDTH} height={BOARD_HEIGHT} fill="#8b5e3e" />
-    <rect x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkPattern})`} />
+    <rect className="board-cork-base" x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkBase})`} />
+    <rect className="board-cork-shade" x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkShade})`} />
+    <rect className="board-cork-speckles" x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkDarkSpecks})`} />
+    <rect className="board-cork-speckles" x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkLightSpecks})`} />
+    <rect className="board-cork-pores" x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkPores})`} />
+    <rect className="board-cork-fibers" x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkFibers})`} />
     <rect x="30" y="30" width={BOARD_WIDTH - 60} height={BOARD_HEIGHT - 60} fill="none" stroke="#6f452d" strokeWidth="8" opacity="0.32" />
     <rect x="38" y="38" width={BOARD_WIDTH - 76} height={BOARD_HEIGHT - 76} fill="none" stroke="#f1d39f" strokeWidth="4" opacity="0.18" />
   </svg>;
@@ -52,7 +75,7 @@ function BoardFrameSurface() {
   const grain = `grain-${id}`;
   return <svg className="board-frame-surface" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} width={BOARD_WIDTH} height={BOARD_HEIGHT} preserveAspectRatio="none" aria-hidden="true" focusable="false">
     <defs>
-      <linearGradient id={wood} x1="0" y1="0" x2="0" y2="1">
+      <linearGradient id={wood} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={BOARD_HEIGHT}>
         <stop offset="0" stopColor="#a57951" />
         <stop offset="0.18" stopColor="#80583c" />
         <stop offset="0.52" stopColor="#65422e" />
@@ -60,15 +83,22 @@ function BoardFrameSurface() {
         <stop offset="1" stopColor="#5d3b29" />
       </linearGradient>
       <pattern id={grain} width="92" height="28" patternUnits="userSpaceOnUse">
-        <rect width="92" height="28" fill={`url(#${wood})`} />
         <path d="M0 7c18-5 31 7 52 0s27-2 40 2M-8 20c21-7 36 5 55-1s30 0 53-4" fill="none" stroke="#d5aa79" strokeWidth="1.8" opacity="0.22" />
         <path d="M7 13c11-2 19 2 30-1M55 24c9-4 22-4 34-1" fill="none" stroke="#3f271c" strokeWidth="1.4" opacity="0.25" />
       </pattern>
     </defs>
-    <path d={`M0 0H${BOARD_WIDTH}L${BOARD_WIDTH - 34} 34H34Z`} fill={`url(#${grain})`} />
-    <path d={`M0 ${BOARD_HEIGHT}H${BOARD_WIDTH}L${BOARD_WIDTH - 34} ${BOARD_HEIGHT - 34}H34Z`} fill={`url(#${grain})`} />
-    <path d={`M0 0L34 34V${BOARD_HEIGHT - 34}L0 ${BOARD_HEIGHT}Z`} fill={`url(#${grain})`} />
-    <path d={`M${BOARD_WIDTH} 0L${BOARD_WIDTH - 34} 34V${BOARD_HEIGHT - 34}L${BOARD_WIDTH} ${BOARD_HEIGHT}Z`} fill={`url(#${grain})`} />
+    <g className="board-frame-base" fill={`url(#${wood})`}>
+      <path d={`M0 0H${BOARD_WIDTH}L${BOARD_WIDTH - 34} 34H34Z`} />
+      <path d={`M0 ${BOARD_HEIGHT}H${BOARD_WIDTH}L${BOARD_WIDTH - 34} ${BOARD_HEIGHT - 34}H34Z`} />
+      <path d={`M0 0L34 34V${BOARD_HEIGHT - 34}L0 ${BOARD_HEIGHT}Z`} />
+      <path d={`M${BOARD_WIDTH} 0L${BOARD_WIDTH - 34} 34V${BOARD_HEIGHT - 34}L${BOARD_WIDTH} ${BOARD_HEIGHT}Z`} />
+    </g>
+    <g className="board-frame-grain" fill={`url(#${grain})`}>
+      <path d={`M0 0H${BOARD_WIDTH}L${BOARD_WIDTH - 34} 34H34Z`} />
+      <path d={`M0 ${BOARD_HEIGHT}H${BOARD_WIDTH}L${BOARD_WIDTH - 34} ${BOARD_HEIGHT - 34}H34Z`} />
+      <path d={`M0 0L34 34V${BOARD_HEIGHT - 34}L0 ${BOARD_HEIGHT}Z`} />
+      <path d={`M${BOARD_WIDTH} 0L${BOARD_WIDTH - 34} 34V${BOARD_HEIGHT - 34}L${BOARD_WIDTH} ${BOARD_HEIGHT}Z`} />
+    </g>
     <rect x="2" y="2" width={BOARD_WIDTH - 4} height={BOARD_HEIGHT - 4} fill="none" stroke="#3f281c" strokeWidth="5" />
     <rect x="31" y="31" width={BOARD_WIDTH - 62} height={BOARD_HEIGHT - 62} fill="none" stroke="#4b3022" strokeWidth="6" opacity="0.7" />
     <rect x="37" y="37" width={BOARD_WIDTH - 74} height={BOARD_HEIGHT - 74} fill="none" stroke="#d5a97a" strokeWidth="3" opacity="0.42" />

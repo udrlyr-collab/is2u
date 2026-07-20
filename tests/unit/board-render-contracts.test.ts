@@ -33,6 +33,19 @@ describe("board rendering contracts", () => {
     expect(view).toContain("board-export-footer");
   });
 
+  it("keeps continuous board bases separate from transparent repeating texture overlays", async () => {
+    const renderer = await readFile(RENDERER_PATH, "utf8");
+    const texturePatterns = renderer.match(/<pattern\b[\s\S]*?<\/pattern>/g) ?? [];
+
+    expect(renderer).toContain('className="board-cork-base"');
+    expect(renderer).toContain('className="board-cork-shade"');
+    expect(renderer).toContain('className="board-cork-fibers"');
+    expect(renderer).toContain('className="board-frame-base"');
+    expect(renderer).toContain('className="board-frame-grain"');
+    expect(texturePatterns.length).toBeGreaterThanOrEqual(4);
+    for (const pattern of texturePatterns) expect(pattern).not.toMatch(/<rect\b/);
+  });
+
   it("waits for fonts, decoded images and two layout frames before capturing", async () => {
     const view = await readFile(VIEW_PATH, "utf8");
     const helperStart = view.indexOf("export async function waitForBoardCaptureReady");
