@@ -3,6 +3,7 @@ import { processMedia } from "./media-processing";
 import { deliverMission } from "./delivery";
 import { runHousekeeping } from "./housekeeping";
 import { backupDatabase } from "./backup";
+import { runMissionScheduleScan } from "./mission-scheduler";
 
 const boss = await getBoss();
 
@@ -18,11 +19,16 @@ await boss.work(QUEUES.housekeeping, { batchSize: 1, localConcurrency: 1 }, asyn
   await runHousekeeping();
 });
 
+await boss.work(QUEUES.missionScheduleScan, { batchSize: 1, localConcurrency: 1 }, async () => {
+  await runMissionScheduleScan();
+});
+
 await boss.work(QUEUES.backup, { batchSize: 1, localConcurrency: 1 }, async () => {
   await backupDatabase();
 });
 
 await boss.schedule(QUEUES.housekeeping, "*/10 * * * *");
+await boss.schedule(QUEUES.missionScheduleScan, "* * * * *");
 await boss.schedule(QUEUES.backup, "30 18 * * *");
 
 console.log("is2u_worker_ready");
@@ -33,4 +39,3 @@ const shutdown = async () => {
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
-

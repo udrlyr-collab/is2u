@@ -1,91 +1,185 @@
-import { and, count, desc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
-import { coupleSettings, dateEvents, missions, users } from "@is2u/db/schema";
-import { canCreateActualMission, chooseMissionTemplate, chooseMissionTimeInRange, chooseRecipient, seoulDayBounds, seoulWeekBounds } from "@is2u/core/missions";
-import { getServerEnv } from "@is2u/core/env";
+import { coupleSettings, couples, dateEvents, dateMissionSchedules, missions } from "@is2u/db/schema";
+import { MISSION_END_BUFFER_MINUTES, nextRecurringMissionAt } from "@is2u/core/missions";
 import { getBoss, QUEUES } from "./queue";
 
-export async function cancelScheduledMission(dateEventId: string): Promise<void> {
-  const db = getDb();
-  const pending = await db.select().from(missions).where(and(
-    eq(missions.dateEventId, dateEventId),
-    eq(missions.isTest, false),
-    eq(missions.source, "automatic"),
-    inArray(missions.status, ["scheduled", "sent"]),
-  ));
-  if (!pending.length) return;
+export const OPERATIONAL_MISSION_SOURCES = ["scheduled_random", "automatic"] as const;
+const DEFAULT_MIN_INTERVAL_MINUTES = 40;
+const DEFAULT_MAX_INTERVAL_MINUTES = 90;
+const DELIVERED_STATUSES = ["sent", "completed", "skipped", "expired"] as const;
+
+type ScheduleEvent = typeof dateEvents.$inferSelect;
+
+function scheduleStatus(event: ScheduleEvent, nextMissionAt: Date | null, now: Date): "waiting" | "active" | "completed" | "cancelled" {
+  if (event.deletedAt || event.status === "cancelled") return "cancelled";
+  if (!nextMissionAt || event.endAt <= now) return "completed";
+  return event.startAt > now ? "waiting" : "active";
+}
+
+function baselineFor(event: ScheduleEvent, now: Date, lastMissionAt?: Date | null): Date {
+  if (event.startAt > now) return event.startAt;
+  return new Date(Math.max(now.getTime(), lastMissionAt?.getTime() ?? 0));
+}
+
+function nextFor(event: ScheduleEvent, baseline: Date, minMinutes: number, maxMinutes: number): Date | null {
+  return nextRecurringMissionAt(baseline, event.endAt, minMinutes, maxMinutes, Math.random, MISSION_END_BUFFER_MINUTES);
+}
+
+async function cancelLegacyJobs(jobIds: Array<string | null>): Promise<void> {
+  const ids = jobIds.filter((jobId): jobId is string => Boolean(jobId));
+  if (!ids.length) return;
   const boss = await getBoss();
-  await Promise.all(pending.map((mission) => mission.jobId
-    ? boss.cancel(QUEUES.deliverMission, mission.jobId).catch(() => undefined)
-    : Promise.resolve()));
-  await db.update(missions).set({ status: "cancelled", updatedAt: new Date() }).where(inArray(missions.id, pending.map((mission) => mission.id)));
+  await Promise.all(ids.map((jobId) => boss.cancel(QUEUES.deliverMission, jobId).catch(() => undefined)));
 }
 
 export async function scheduleMissionForDate(dateEventId: string): Promise<void> {
   const db = getDb();
-  const env = getServerEnv();
-  const [event] = await db.select().from(dateEvents).where(and(eq(dateEvents.id, dateEventId), isNull(dateEvents.deletedAt))).limit(1);
   const now = new Date();
-  if (!event || !canCreateActualMission(event, now)) return;
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from date_events where id = ${dateEventId} for update`);
+    const [row] = await tx.select({ event: dateEvents, coupleStatus: couples.status }).from(dateEvents)
+      .innerJoin(couples, eq(dateEvents.coupleId, couples.id))
+      .where(eq(dateEvents.id, dateEventId)).limit(1);
+    if (!row || row.event.isTest) return;
+    await tx.execute(sql`select id from couples where id = ${row.event.coupleId} for update`);
 
-  const [settings] = await db.select().from(coupleSettings).where(eq(coupleSettings.id, 1)).limit(1);
-  const eventMissions = await db.select().from(missions).where(and(
-    eq(missions.dateEventId, dateEventId),
-    eq(missions.isTest, false),
-    eq(missions.source, "automatic"),
-  )).orderBy(desc(missions.scheduledAt));
-  if (eventMissions.some((mission) => mission.status === "scheduled" || mission.status === "sent")) return;
-  const countedEventMissions = eventMissions.filter((mission) => !["cancelled"].includes(mission.status));
-  if (countedEventMissions.length >= 2) return;
+    const [existing] = await tx.select().from(dateMissionSchedules).where(eq(dateMissionSchedules.dateEventId, dateEventId)).limit(1);
+    if (row.coupleStatus !== "active" || row.event.deletedAt || row.event.status === "cancelled" || row.event.endAt <= now) {
+      if (existing) await tx.update(dateMissionSchedules).set({ nextMissionAt: null, status: row.event.status === "cancelled" || row.event.deletedAt ? "cancelled" : "completed", updatedAt: now }).where(eq(dateMissionSchedules.id, existing.id));
+      return;
+    }
+    if (existing && ["waiting", "active"].includes(existing.status) && existing.nextMissionAt) return;
+    if (existing?.status === "completed") return;
 
-  const baseline = countedEventMissions[0]?.sentAt ?? countedEventMissions[0]?.scheduledAt ?? event.startAt;
-  const scheduledAt = chooseMissionTimeInRange(
-    event.startAt,
-    event.endAt,
-    baseline,
-    settings?.missionIntervalMinMinutes ?? 40,
-    settings?.missionIntervalMaxMinutes ?? 90,
-    {
-      timezone: env.APP_TIMEZONE,
-      notificationStartHour: env.MISSION_NOTIFICATION_START_HOUR,
-      notificationEndHour: env.MISSION_NOTIFICATION_END_HOUR,
-      notBefore: now,
-    },
-  );
-  if (!scheduledAt) return;
+    const [settings] = await tx.select().from(coupleSettings).where(eq(coupleSettings.coupleId, row.event.coupleId)).limit(1);
+    const history = await tx.select({ recipientId: missions.recipientId, sentAt: missions.sentAt, scheduledAt: missions.scheduledAt }).from(missions).where(and(
+      eq(missions.dateEventId, dateEventId), eq(missions.isTest, false), inArray(missions.source, [...OPERATIONAL_MISSION_SOURCES]),
+      inArray(missions.status, [...DELIVERED_STATUSES]), isNull(missions.deletedAt),
+    )).orderBy(desc(missions.sentAt), desc(missions.scheduledAt));
+    const counts = history.reduce<Record<string, number>>((result, mission) => {
+      result[mission.recipientId] = (result[mission.recipientId] ?? 0) + 1;
+      return result;
+    }, {});
+    const lastMissionAt = history[0]?.sentAt ?? history[0]?.scheduledAt ?? null;
+    const nextMissionAt = nextFor(
+      row.event,
+      baselineFor(row.event, now, lastMissionAt),
+      settings?.missionIntervalMinMinutes ?? DEFAULT_MIN_INTERVAL_MINUTES,
+      settings?.missionIntervalMaxMinutes ?? DEFAULT_MAX_INTERVAL_MINUTES,
+    );
+    const values = {
+      coupleId: row.event.coupleId,
+      nextMissionAt,
+      lastMissionAt,
+      lastRecipientUserId: history[0]?.recipientId ?? null,
+      missionsSentCount: history.length,
+      recipientCounts: counts,
+      status: scheduleStatus(row.event, nextMissionAt, now),
+      dispatchKey: randomUUID(),
+      updatedAt: now,
+    } as const;
+    await tx.insert(dateMissionSchedules).values({ dateEventId, ...values }).onConflictDoUpdate({
+      target: dateMissionSchedules.dateEventId,
+      set: values,
+    });
+  });
+}
 
-  const day = seoulDayBounds(scheduledAt);
-  const [daily] = await db.select({ value: count() }).from(missions).where(and(
-    eq(missions.isTest, false), eq(missions.source, "automatic"), gte(missions.scheduledAt, day.start), lt(missions.scheduledAt, day.end), inArray(missions.status, ["scheduled", "sent", "completed", "skipped", "expired"]),
+export async function rescheduleMissionForDate(dateEventId: string): Promise<void> {
+  const db = getDb();
+  const pending = await db.select({ id: missions.id, jobId: missions.jobId }).from(missions).where(and(
+    eq(missions.dateEventId, dateEventId), eq(missions.isTest, false), inArray(missions.source, [...OPERATIONAL_MISSION_SOURCES]),
+    eq(missions.status, "scheduled"), isNull(missions.deletedAt),
   ));
-  if (Number(daily?.value ?? 0) >= 2) return;
+  if (pending.length) await db.update(missions).set({ status: "cancelled", updatedAt: new Date() }).where(inArray(missions.id, pending.map((mission) => mission.id)));
+  await cancelLegacyJobs(pending.map((mission) => mission.jobId));
 
-  const week = seoulWeekBounds(scheduledAt);
-  const [weekly] = await db.select({ value: count() }).from(missions).where(and(
-    eq(missions.isTest, false), eq(missions.source, "automatic"), gte(missions.scheduledAt, week.start), lt(missions.scheduledAt, week.end), inArray(missions.status, ["scheduled", "sent", "completed", "skipped", "expired"]),
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from date_events where id = ${dateEventId} for update`);
+    const [row] = await tx.select({ event: dateEvents, coupleStatus: couples.status }).from(dateEvents)
+      .innerJoin(couples, eq(dateEvents.coupleId, couples.id)).where(eq(dateEvents.id, dateEventId)).limit(1);
+    if (!row || row.event.isTest) return;
+    await tx.execute(sql`select id from couples where id = ${row.event.coupleId} for update`);
+    const [settings] = await tx.select().from(coupleSettings).where(eq(coupleSettings.coupleId, row.event.coupleId)).limit(1);
+    const history = await tx.select({ recipientId: missions.recipientId, sentAt: missions.sentAt, scheduledAt: missions.scheduledAt }).from(missions).where(and(
+      eq(missions.dateEventId, dateEventId), eq(missions.isTest, false), inArray(missions.source, [...OPERATIONAL_MISSION_SOURCES]),
+      inArray(missions.status, [...DELIVERED_STATUSES]), isNull(missions.deletedAt),
+    )).orderBy(desc(missions.sentAt), desc(missions.scheduledAt));
+    const counts = history.reduce<Record<string, number>>((result, mission) => {
+      result[mission.recipientId] = (result[mission.recipientId] ?? 0) + 1;
+      return result;
+    }, {});
+    const lastMissionAt = history[0]?.sentAt ?? history[0]?.scheduledAt ?? null;
+    const baseline = row.event.startAt > now ? row.event.startAt : now;
+    const nextMissionAt = row.coupleStatus === "active" && !row.event.deletedAt && row.event.status !== "cancelled" && row.event.endAt > now
+      ? nextFor(row.event, baseline, settings?.missionIntervalMinMinutes ?? DEFAULT_MIN_INTERVAL_MINUTES, settings?.missionIntervalMaxMinutes ?? DEFAULT_MAX_INTERVAL_MINUTES)
+      : null;
+    const values = {
+      coupleId: row.event.coupleId,
+      nextMissionAt,
+      lastMissionAt,
+      lastRecipientUserId: history[0]?.recipientId ?? null,
+      missionsSentCount: history.length,
+      recipientCounts: counts,
+      status: row.coupleStatus === "active" ? scheduleStatus(row.event, nextMissionAt, now) : "cancelled" as const,
+      dispatchKey: randomUUID(),
+      updatedAt: now,
+    };
+    await tx.insert(dateMissionSchedules).values({ dateEventId, ...values }).onConflictDoUpdate({ target: dateMissionSchedules.dateEventId, set: values });
+  });
+}
+
+export async function cancelScheduledMission(dateEventId: string): Promise<void> {
+  const db = getDb();
+  const pending = await db.select({ id: missions.id, jobId: missions.jobId }).from(missions).where(and(
+    eq(missions.dateEventId, dateEventId), eq(missions.isTest, false), inArray(missions.source, [...OPERATIONAL_MISSION_SOURCES]),
+    isNull(missions.deletedAt), inArray(missions.status, ["scheduled", "sent"]),
   ));
-  if (Number(weekly?.value ?? 0) >= (settings?.weeklyMissionLimit ?? env.MISSION_WEEKLY_LIMIT)) return;
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    if (pending.length) await tx.update(missions).set({ status: "cancelled", updatedAt: now }).where(inArray(missions.id, pending.map((mission) => mission.id)));
+    await tx.update(dateMissionSchedules).set({ nextMissionAt: null, status: "cancelled", dispatchKey: randomUUID(), updatedAt: now }).where(eq(dateMissionSchedules.dateEventId, dateEventId));
+  });
+  await cancelLegacyJobs(pending.map((mission) => mission.jobId));
+}
 
-  const recentTemplates = await db.select({ templateId: missions.templateId }).from(missions)
-    .where(and(eq(missions.isTest, false), eq(missions.source, "automatic"), inArray(missions.status, ["sent", "completed", "skipped", "expired"])))
-    .orderBy(desc(missions.sentAt)).limit(3);
-  const delivered = await db.select({ recipientId: missions.recipientId, value: count() }).from(missions).where(and(eq(missions.isTest, false), eq(missions.source, "automatic"), inArray(missions.status, ["sent", "completed", "skipped", "expired"]))).groupBy(missions.recipientId);
-  const recipients = await db.select({ id: users.id }).from(users).orderBy(users.id);
-  if (recipients.length !== 2) throw new Error("고정 사용자가 정확히 두 명이어야 합니다.");
-  const counts = new Map(delivered.map((item) => [item.recipientId, Number(item.value)]));
-  const recipientId = chooseRecipient(
-    { id: recipients[0].id, delivered: counts.get(recipients[0].id) ?? 0 },
-    { id: recipients[1].id, delivered: counts.get(recipients[1].id) ?? 0 },
-  );
-  const selectedTemplate = chooseMissionTemplate(recentTemplates.map((item) => item.templateId).filter((id): id is string => Boolean(id)));
+export async function updateMissionIntervalAndReschedule(coupleId: string, minMinutes: number, maxMinutes: number): Promise<{ minMinutes: number; maxMinutes: number }> {
+  const db = getDb();
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select id from couples where id = ${coupleId} for update`);
+    const [settings] = await tx.insert(coupleSettings).values({
+      coupleId,
+      missionIntervalMinMinutes: minMinutes,
+      missionIntervalMaxMinutes: maxMinutes,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: coupleSettings.coupleId,
+      set: { missionIntervalMinMinutes: minMinutes, missionIntervalMaxMinutes: maxMinutes, updatedAt: now },
+    }).returning();
 
-  const [created] = await db.insert(missions).values({ dateEventId, recipientId, type: selectedTemplate.type, templateId: selectedTemplate.id, scheduledAt, isTest: false, source: "automatic" }).returning();
-  if (!created) return;
-  try {
-    const jobId = await (await getBoss()).sendAfter(QUEUES.deliverMission, { missionId: created.id }, { retryLimit: 2 }, scheduledAt);
-    await db.update(missions).set({ jobId, updatedAt: new Date() }).where(eq(missions.id, created.id));
-  } catch (error) {
-    await db.update(missions).set({ status: "cancelled", updatedAt: new Date() }).where(eq(missions.id, created.id));
-    throw error;
-  }
+    const events = await tx.select().from(dateEvents).where(and(
+      eq(dateEvents.coupleId, coupleId), eq(dateEvents.isTest, false), isNull(dateEvents.deletedAt),
+      inArray(dateEvents.status, ["scheduled", "active"]), gt(dateEvents.endAt, now),
+    ));
+    for (const event of events) {
+      await tx.execute(sql`select id from date_mission_schedules where date_event_id = ${event.id} for update`);
+      const [existing] = await tx.select().from(dateMissionSchedules).where(eq(dateMissionSchedules.dateEventId, event.id)).limit(1);
+      const baseline = event.startAt > now ? event.startAt : now;
+      const nextMissionAt = nextFor(event, baseline, minMinutes, maxMinutes);
+      const values = {
+        coupleId,
+        nextMissionAt,
+        status: scheduleStatus(event, nextMissionAt, now),
+        dispatchKey: randomUUID(),
+        updatedAt: now,
+      } as const;
+      if (existing) await tx.update(dateMissionSchedules).set(values).where(eq(dateMissionSchedules.id, existing.id));
+      else await tx.insert(dateMissionSchedules).values({ dateEventId: event.id, ...values });
+    }
+    return { minMinutes: settings.missionIntervalMinMinutes, maxMinutes: settings.missionIntervalMaxMinutes };
+  });
 }

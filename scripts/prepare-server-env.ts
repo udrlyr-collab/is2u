@@ -52,7 +52,6 @@ const values: Record<string, string> = {
   BACKUP_ENCRYPTION_KEY: secret(),
   MAX_PHOTO_BYTES: "26214400", MAX_AUDIO_BYTES: "26214400", MAX_MISSION_VIDEO_BYTES: "262144000", MAX_MANUAL_VIDEO_BYTES: "5368709120",
   MISSION_WEEKLY_LIMIT: "2", MISSION_NOTIFICATION_START_HOUR: "10", MISSION_NOTIFICATION_END_HOUR: "22", DEV_SIMULATOR_ENABLED: "false",
-  ENABLE_MISSION_TEST_MODE: "false",
 };
 const output = resolve(outputArg ?? `${homedir()}/.is2u/server.env`);
 await mkdir(dirname(output), { recursive: true });

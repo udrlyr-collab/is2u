@@ -1,17 +1,22 @@
 import webpush from "web-push";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
-import { dateEvents, missions, pushSubscriptions } from "@is2u/db/schema";
+import { adminTestDispatches, couples, dateEvents, missions, pushSubscriptions } from "@is2u/db/schema";
 import { getServerEnv } from "@is2u/core/env";
 import { getMissionTemplate, userFacingSentence } from "@is2u/core/types";
 import { canDeliverActualMission } from "@is2u/core/missions";
 
 export async function deliverMission(missionId: string): Promise<void> {
   const db = getDb();
-  const [row] = await db.select({ mission: missions, event: dateEvents }).from(missions).innerJoin(dateEvents, eq(missions.dateEventId, dateEvents.id)).where(eq(missions.id, missionId)).limit(1);
+  const [row] = await db.select({ mission: missions, event: dateEvents, coupleStatus: couples.status }).from(missions)
+    .leftJoin(dateEvents, eq(missions.dateEventId, dateEvents.id))
+    .leftJoin(couples, eq(missions.coupleId, couples.id))
+    .where(and(eq(missions.id, missionId), isNull(missions.deletedAt))).limit(1);
   if (!row || row.mission.status !== "scheduled") return;
+  const isAdminTest = row.mission.source === "admin_test" && row.mission.isTest;
+  if (!isAdminTest && row.coupleStatus !== "active") return;
   const now = new Date();
-  const actualMissionBlocked = row.mission.source === "automatic" && !canDeliverActualMission(row.event, now);
+  const actualMissionBlocked = ["automatic", "scheduled_random"].includes(row.mission.source) && (!row.event || !canDeliverActualMission(row.event, now));
   if (actualMissionBlocked) {
     await db.update(missions).set({ status: "cancelled", updatedAt: now }).where(eq(missions.id, missionId));
     return;
@@ -19,6 +24,7 @@ export async function deliverMission(missionId: string): Promise<void> {
   const expiresAt = new Date(now.getTime() + 30 * 60_000);
   await db.transaction(async (tx) => {
     await tx.update(missions).set({ status: "sent", sentAt: now, expiresAt, updatedAt: now }).where(eq(missions.id, missionId));
+    if (isAdminTest) await tx.update(adminTestDispatches).set({ deliveryStatus: "sent", failureCode: null, updatedAt: now }).where(eq(adminTestDispatches.missionId, missionId));
   });
 
   const env = getServerEnv();

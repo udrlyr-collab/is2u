@@ -8,4 +8,5 @@
   <rect x="184" y="74" width="144" height="45" rx="7" fill="#e9ded2" opacity=".9" transform="rotate(-2 256 96)"/>
   <path d="M171 286c42-7 113-7 169 0" fill="none" stroke="#7a5649" stroke-width="17" stroke-linecap="round"/>
   <path d="m252 182 8 20 21 2-16 14 5 21-18-11-18 11 5-21-16-14 21-2z" fill="#d9827a"/>
+  <path d="M348 286c-9-13-29-5-27 11 2 14 17 22 27 31 10-9 26-18 28-31 2-16-18-24-28-11z" fill="none" stroke="#d9827a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

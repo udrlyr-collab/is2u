@@ -33,7 +33,6 @@ const serverEnvSchema = z.object({
   MISSION_NOTIFICATION_START_HOUR: z.coerce.number().int().min(0).max(23).default(10),
   MISSION_NOTIFICATION_END_HOUR: z.coerce.number().int().min(1).max(24).default(22),
   DEV_SIMULATOR_ENABLED: z.enum(["true", "false"]).default("false"),
-  ENABLE_MISSION_TEST_MODE: z.enum(["true", "false"]).default("false"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

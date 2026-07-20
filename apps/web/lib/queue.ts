@@ -5,6 +5,7 @@ export const QUEUES = {
   deliverMission: "deliver-mission",
   processMedia: "process-media",
   housekeeping: "housekeeping",
+  missionScheduleScan: "mission-schedule-scan",
   backup: "backup-database",
 } as const;
 
@@ -19,10 +20,10 @@ export function getBoss(): Promise<PgBoss> {
       boss.createQueue(QUEUES.deliverMission, { retryLimit: 2, retryDelay: 60, expireInSeconds: 120 }),
       boss.createQueue(QUEUES.processMedia, { retryLimit: 3, retryDelay: 120, expireInSeconds: 7200 }),
       boss.createQueue(QUEUES.housekeeping, { retryLimit: 1, expireInSeconds: 600 }),
+      boss.createQueue(QUEUES.missionScheduleScan, { retryLimit: 2, retryDelay: 30, expireInSeconds: 120 }),
       boss.createQueue(QUEUES.backup, { retryLimit: 2, retryDelay: 300, expireInSeconds: 3600 }),
     ]);
     return boss;
   })();
   return bossPromise;
 }
-

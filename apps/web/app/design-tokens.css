@@ -27,5 +27,7 @@
   --tape-leaf: rgb(169 185 154 / 0.58);
   --transition-quick: 150ms ease;
   --transition-paper: 220ms ease;
+  --page-max-width: 78rem;
+  --page-padding-inline: clamp(1rem, calc(4vw + 0.25rem), 3rem);
   color-scheme: light;
 }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EMOTIONS, MEMORY_TYPES } from "./types";
+import { EMOTIONS, MEMORY_TYPES, USER_GENDERS } from "./types";
 
 const unsafeUserText = /[<>\u0000-\u001f\u007f]|(?:javascript:|data:text|<\/?script\b)/iu;
 
@@ -7,7 +7,70 @@ export const memoryTitleSchema = z.string().trim().max(30).superRefine((value, c
   if (unsafeUserText.test(value)) context.addIssue({ code: "custom", message: "제목에는 일반 문자만 입력해 주세요" });
 }).transform((value) => value || null);
 
-export const loginSchema = z.object({ pin: z.string().regex(/^\d{4}$/) });
+const namePattern = /^[가-힣A-Za-z0-9 ]+$/u;
+const usernamePattern = /^[a-z0-9_]{4,20}$/;
+const commonPasswords = new Set([
+  "password", "password1", "password123", "qwerty123", "qwer1234", "asdf1234",
+  "12345678", "123456789", "11111111", "00000000", "abc12345", "iloveyou",
+]);
+
+export function normalizeUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function isCommonPassword(value: string): boolean {
+  const lowered = value.toLowerCase();
+  if (commonPasswords.has(lowered)) return true;
+  if (/^(.)\1{7,}$/u.test(value)) return true;
+  if (/^(?:01234567|12345678|23456789|87654321|98765432)$/u.test(value)) return true;
+  return false;
+}
+
+export const accountNameSchema = z.string().trim().min(1, "이름을 입력해 주세요").max(20, "이름은 20자까지 입력할 수 있어요")
+  .regex(namePattern, "이름에는 한글, 영문, 숫자와 공백만 사용할 수 있어요");
+
+export const usernameSchema = z.string().transform(normalizeUsername)
+  .pipe(z.string().regex(usernamePattern, "아이디는 영문 소문자, 숫자, 밑줄로 4~20자여야 해요"));
+
+export const passwordSchema = z.string().min(8, "비밀번호는 8자 이상이어야 해요").max(128, "비밀번호는 128자까지 입력할 수 있어요")
+  .refine((value) => !isCommonPassword(value), "너무 단순하거나 자주 쓰이는 비밀번호는 사용할 수 없어요");
+
+export const signupSchema = z.object({
+  displayName: accountNameSchema,
+  username: usernameSchema,
+  password: passwordSchema,
+  passwordConfirm: z.string(),
+  gender: z.enum(USER_GENDERS),
+}).refine((value) => value.password === value.passwordConfirm, { path: ["passwordConfirm"], message: "비밀번호가 서로 같지 않아요" });
+
+export const loginSchema = z.object({ username: usernameSchema, password: z.string().min(1).max(128) });
+
+export const coupleInvitationCreateSchema = z.object({ username: usernameSchema });
+export const coupleInvitationActionSchema = z.object({ action: z.enum(["accept", "decline", "cancel"]) });
+export const coupleDisconnectSchema = z.object({
+  password: z.string().min(1).max(128),
+  phrase: z.literal("연결을 정리할게요"),
+});
+
+export const adminUserActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.enum(["suspend", "activate", "clear-invitations"]) }),
+  z.object({ action: z.literal("delete"), username: usernameSchema }),
+]);
+
+export const ADMIN_DISCONNECT_REASONS = ["user_request", "wrong_connection", "account_deletion", "operations", "custom"] as const;
+export const adminCoupleDisconnectSchema = z.object({
+  action: z.literal("disconnect"),
+  reason: z.enum(ADMIN_DISCONNECT_REASONS),
+  customReason: z.string().trim().max(200).optional(),
+  phrase: z.literal("연결을 정리할게요"),
+}).superRefine((value, context) => {
+  if (value.reason === "custom" && !value.customReason) context.addIssue({ code: "custom", path: ["customReason"], message: "사유를 입력해 주세요" });
+});
+
+export const accountUpdateSchema = z.object({
+  displayName: accountNameSchema,
+  gender: z.enum(USER_GENDERS),
+}).strict();
 
 export const dateEventSchema = z.object({
   startAt: z.coerce.date(),
@@ -36,6 +99,7 @@ export const missionCompletionSchema = z.object({
   emotionId: z.string().trim().max(50).optional(),
   customEmotion: customEmotionSchema.optional(),
   customTitle: memoryTitleSchema.optional(),
+  dateEventId: z.uuid().nullable().optional(),
   idempotencyKey: z.uuid(),
   replaceExisting: z.boolean().optional().default(false),
   deferReplacement: z.boolean().optional().default(false),
@@ -59,17 +123,27 @@ export const manualMemoryCreateSchema = z.object({
   if (value.text && unsafeUserText.test(value.text)) context.addIssue({ code: "custom", message: "내용에는 일반 문자만 입력해 주세요" });
 });
 
-export const memoryEditSchema = z.object({
+const memoryEditFields = {
   customTitle: memoryTitleSchema.optional(),
   text: z.string().trim().max(300).optional().nullable(),
-}).superRefine((value, context) => {
+  dateEventId: z.uuid().nullable().optional(),
+};
+
+function validateMemoryEditText(value: { text?: string | null }, context: z.RefinementCtx) {
   if (value.text && unsafeUserText.test(value.text)) context.addIssue({ code: "custom", message: "내용에는 일반 문자만 입력해 주세요" });
-});
+}
+
+export const memoryEditSchema = z.object(memoryEditFields).superRefine(validateMemoryEditText);
+export const memoryReplacementSchema = z.object({ ...memoryEditFields, idempotencyKey: z.uuid() }).superRefine(validateMemoryEditText);
 
 export const coupleMissionIntervalSchema = z.object({
-  minMinutes: z.number().int().min(20).max(240),
-  maxMinutes: z.number().int().min(20).max(240),
-}).refine((value) => value.minMinutes <= value.maxMinutes, { message: "최소 간격은 최대 간격보다 클 수 없어요" });
+  minMinutes: z.number().int().min(10).max(240),
+  maxMinutes: z.number().int().min(10).max(240),
+}).refine((value) => value.minMinutes <= value.maxMinutes, { message: "최소 간격은 최대 간격보다 작거나 같아야 해요" });
+
+export const missionCapabilitiesSchema = z.object({
+  capabilities: z.array(z.enum(["microphone", "camera", "media-library"])).max(3),
+});
 
 export function resolveEmotion(input: { emotionId?: string; customEmotion?: string }): string | null {
   if (input.customEmotion) return input.customEmotion;

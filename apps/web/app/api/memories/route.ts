@@ -4,6 +4,7 @@ import { auditEvents, dateEvents, memories } from "@is2u/db/schema";
 import { manualMemoryCreateSchema } from "@is2u/core/validation";
 import { requireCsrf, requireSession } from "../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../lib/http";
+import { getActiveCouple, requireActiveRecordCouple } from "../../../lib/couples";
 
 export const POST = withApiErrors(async (request: Request) => {
   const session = await requireSession(request);
@@ -11,6 +12,7 @@ export const POST = withApiErrors(async (request: Request) => {
   const raw = await readJson(request);
   const input = manualMemoryCreateSchema.parse(raw);
   const db = getDb();
+  const activeCouple = await getActiveCouple(session.user.id);
 
   const [existing] = await db.select().from(memories).where(eq(memories.idempotencyKey, input.idempotencyKey)).limit(1);
   if (existing) {
@@ -20,23 +22,25 @@ export const POST = withApiErrors(async (request: Request) => {
 
   let dateEventId = input.dateEventId ?? null;
   if (dateEventId) {
-    const [event] = await db.select({ id: dateEvents.id }).from(dateEvents).where(and(
+    const [event] = await db.select({ id: dateEvents.id, coupleId: dateEvents.coupleId }).from(dateEvents).where(and(
       eq(dateEvents.id, dateEventId),
       eq(dateEvents.isTest, false),
       isNull(dateEvents.deletedAt),
     )).limit(1);
     if (!event) throw new HttpError(404, "연결할 약속을 찾을 수 없어요");
+    await requireActiveRecordCouple(session.user.id, event.coupleId);
   } else if (!("dateEventId" in (raw as Record<string, unknown>))) {
     const now = new Date();
-    const active = await db.select({ id: dateEvents.id }).from(dateEvents).where(and(
-      eq(dateEvents.isTest, false), isNull(dateEvents.deletedAt), lt(dateEvents.startAt, now), gt(dateEvents.endAt, now),
-    )).limit(2);
+    const active = activeCouple ? await db.select({ id: dateEvents.id }).from(dateEvents).where(and(
+      eq(dateEvents.coupleId, activeCouple.id), eq(dateEvents.isTest, false), isNull(dateEvents.deletedAt), lt(dateEvents.startAt, now), gt(dateEvents.endAt, now),
+    )).limit(2) : [];
     if (active.length === 1) dateEventId = active[0].id;
   }
 
   const now = new Date();
   const pendingMedia = input.type !== "text";
   const [memory] = await db.insert(memories).values({
+    coupleId: activeCouple?.id ?? null,
     dateEventId,
     missionId: null,
     createdBy: session.user.id,

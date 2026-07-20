@@ -1,18 +1,21 @@
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
-import { mediaAssets } from "@is2u/db/schema";
+import { mediaAssets, memories } from "@is2u/db/schema";
 import { getServerEnv } from "@is2u/core/env";
 import { signMediaToken } from "@is2u/core/crypto";
 import { requireSession } from "../../../../../lib/auth";
 import { HttpError, json, withApiErrors } from "../../../../../lib/http";
+import { canAccessMemory } from "../../../../../lib/couples";
 
 type Context = { params: Promise<{ assetId: string }> };
 
 export const POST = withApiErrors(async (request: Request, context: Context) => {
   const session = await requireSession(request);
   const { assetId } = await context.params;
-  const [asset] = await getDb().select().from(mediaAssets).where(and(eq(mediaAssets.id, assetId), ne(mediaAssets.role, "original"), eq(mediaAssets.processingStatus, "ready"))).limit(1);
-  if (!asset || asset.role === "original") throw new HttpError(404, "미디어를 찾을 수 없어요");
+  const [row] = await getDb().select({ asset: mediaAssets, memory: memories }).from(mediaAssets).innerJoin(memories, eq(mediaAssets.memoryId, memories.id)).where(and(eq(mediaAssets.id, assetId), ne(mediaAssets.role, "original"), eq(mediaAssets.processingStatus, "ready"))).limit(1);
+  if (!row || !await canAccessMemory(session.user.id, row.memory)) throw new HttpError(404, "미디어를 찾을 수 없어요");
+  const asset = row.asset;
+  if (asset.role === "original") throw new HttpError(404, "미디어를 찾을 수 없어요");
   const env = getServerEnv();
   const token = signMediaToken({
     assetId: asset.id,

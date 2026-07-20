@@ -7,6 +7,7 @@ import { MISSION_TYPES } from "@is2u/core/types";
 import { requireCsrf, requireSession } from "../../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../../lib/http";
 import { scheduleMissionForDate } from "../../../../lib/scheduler";
+import { requireActiveCouple } from "../../../../lib/couples";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create-active-date") }),
@@ -33,11 +34,12 @@ export const GET = withApiErrors(async (request: Request) => {
 export const POST = withApiErrors(async (request: Request) => {
   assertDev();
   const session = await requireSession(request); await requireCsrf(request, session);
+  const activeCouple = await requireActiveCouple(session.user.id);
   const input = schema.parse(await readJson(request));
   const db = getDb();
   if (input.action === "create-active-date") {
     const now = Date.now();
-    const [event] = await db.insert(dateEvents).values({ title: `[DEV] ${new Date().toISOString()}`, startAt: new Date(now - 21 * 60_000), endAt: new Date(now + 60 * 60_000), status: "active", createdBy: session.user.id }).returning();
+    const [event] = await db.insert(dateEvents).values({ coupleId: activeCouple.id, title: `[DEV] ${new Date().toISOString()}`, startAt: new Date(now - 21 * 60_000), endAt: new Date(now + 60 * 60_000), status: "active", createdBy: session.user.id }).returning();
     await scheduleMissionForDate(event.id);
     return json({ event }, 201);
   }
@@ -46,7 +48,7 @@ export const POST = withApiErrors(async (request: Request) => {
     if (!event) throw new HttpError(409, "먼저 개발용 일정을 만들어 주세요.");
     await db.delete(missions).where(and(eq(missions.dateEventId, event.id), eq(missions.status, "scheduled")));
     const now = new Date();
-    const [mission] = await db.insert(missions).values({ dateEventId: event.id, recipientId: session.user.id, type: input.missionType, scheduledAt: now, sentAt: now, expiresAt: new Date(now.getTime() + 30 * 60_000), status: "sent" }).onConflictDoUpdate({ target: missions.dateEventId, set: { recipientId: session.user.id, type: input.missionType, sentAt: now, expiresAt: new Date(now.getTime() + 30 * 60_000), status: "sent", updatedAt: now } }).returning();
+    const [mission] = await db.insert(missions).values({ coupleId: event.coupleId, dateEventId: event.id, recipientId: session.user.id, type: input.missionType, scheduledAt: now, sentAt: now, expiresAt: new Date(now.getTime() + 30 * 60_000), status: "sent", isTest: true, source: "test" }).returning();
     return json({ mission }, 201);
   }
   if (input.action === "advance") {
@@ -79,4 +81,3 @@ export const POST = withApiErrors(async (request: Request) => {
   }
   throw new HttpError(400, "지원하지 않는 작업입니다.");
 });
-

@@ -7,7 +7,7 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") event.respondWith(fetch(event.request).catch(() => caches.match("/offline")));
 });
 self.addEventListener("push", (event) => {
-  const payload = event.data ? event.data.json() : { title: "그대로 멈춰라", body: "작은 순간이 도착했어요", url: "/home" };
+  const payload = event.data ? event.data.json() : { title: "그대로 멈춰라", body: "작은 추억이 도착했어요", url: "/home" };
   event.waitUntil(self.registration.showNotification(payload.title, { body: payload.body, data: { url: payload.url }, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", tag: payload.missionId ? `mission-${payload.missionId}` : "is2u", renotify: false }));
 });
 self.addEventListener("notificationclick", (event) => {

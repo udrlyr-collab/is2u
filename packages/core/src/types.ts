@@ -7,8 +7,11 @@ export type MissionType = (typeof MISSION_TYPES)[number];
 export const MISSION_STATUSES = ["scheduled", "sent", "completed", "skipped", "expired", "cancelled"] as const;
 export type MissionStatus = (typeof MISSION_STATUSES)[number];
 
-export const MISSION_SOURCES = ["automatic", "test", "manual_random"] as const;
+export const MISSION_SOURCES = ["scheduled_random", "automatic", "test", "manual_random", "admin_test"] as const;
 export type MissionSource = (typeof MISSION_SOURCES)[number];
+
+export const MISSION_SCHEDULE_STATUSES = ["waiting", "active", "paused", "completed", "cancelled"] as const;
+export type MissionScheduleStatus = (typeof MISSION_SCHEDULE_STATUSES)[number];
 
 export const MEMORY_TYPES = ["audio", "photo", "video", "text", "emotion", "manual_video"] as const;
 export type MemoryType = (typeof MEMORY_TYPES)[number];
@@ -39,16 +42,41 @@ export type UploadStatus = (typeof UPLOAD_STATUSES)[number];
 export const PROCESSING_STATUSES = ["pending", "processing", "ready", "failed"] as const;
 export type ProcessingStatus = (typeof PROCESSING_STATUSES)[number];
 
+export const USER_GENDERS = ["male", "female"] as const;
+export type UserGender = (typeof USER_GENDERS)[number];
+
+export const USER_ROLES = ["user", "admin"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const ACCOUNT_STATUSES = ["active", "suspended", "pending_deletion", "deleted"] as const;
+export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+
+export const COUPLE_STATUSES = ["active", "ended"] as const;
+export type CoupleStatus = (typeof COUPLE_STATUSES)[number];
+
+export const COUPLE_INVITATION_STATUSES = ["pending", "accepted", "declined", "cancelled", "expired"] as const;
+export type CoupleInvitationStatus = (typeof COUPLE_INVITATION_STATUSES)[number];
+
+export function relationshipLabel(gender: UserGender): "남자친구" | "여자친구" {
+  return gender === "male" ? "남자친구" : "여자친구";
+}
+
+export function relationshipTone(gender: UserGender): "boyfriend" | "girlfriend" {
+  return gender === "male" ? "boyfriend" : "girlfriend";
+}
+
 export const FIXED_USERS = {
   seoyeong: {
     id: "8f35b489-0d7d-48ad-b45c-598b9a9f0560",
     displayName: "이서영",
     roleLabel: "여자친구",
+    gender: "female" as const,
   },
   seongmin: {
     id: "8b871773-c4e1-439e-9272-e7ed386ee32b",
     displayName: "홍성민",
     roleLabel: "남자친구",
+    gender: "male" as const,
   },
 } as const;
 
@@ -60,7 +88,7 @@ export const EMOTION_CATEGORY_DEFINITIONS = [
   { id: "stillness", label: "잔잔함", color: "sky", icon: "≈" },
   { id: "tired", label: "피곤함", color: "faded", icon: "—" },
   { id: "complicated", label: "복잡함", color: "mauve", icon: "◇" },
-  { id: "special", label: "특별한 순간", color: "star", icon: "⋆" },
+  { id: "special", label: "특별함", color: "star", icon: "⋆" },
 ] as const;
 
 export type EmotionCategoryId = (typeof EMOTION_CATEGORY_DEFINITIONS)[number]["id"];
@@ -97,6 +125,39 @@ export const EMOTIONS: readonly EmotionDefinition[] = EMOTION_CATEGORY_DEFINITIO
   })),
 );
 
+export const ATMOSPHERE_CATEGORY_DEFINITIONS = [
+  { id: "comfort", label: "편안함", color: "cream", icon: "⌁" },
+  { id: "joy", label: "즐거움", color: "butter", icon: "✦" },
+  { id: "flutter", label: "설렘", color: "strawberry", icon: "✣" },
+  { id: "affection", label: "애정", color: "rose", icon: "♡" },
+  { id: "stillness", label: "잔잔함", color: "sky", icon: "≈" },
+  { id: "complicated", label: "복잡함", color: "mauve", icon: "◇" },
+  { id: "special", label: "특별함", color: "star", icon: "⋆" },
+] as const;
+
+export type AtmosphereCategoryId = (typeof ATMOSPHERE_CATEGORY_DEFINITIONS)[number]["id"];
+
+const atmosphereLabels: Record<AtmosphereCategoryId, readonly string[]> = {
+  comfort: ["편안한", "포근한", "느긋한", "안정된", "아늑한"],
+  joy: ["신나는", "장난스러운", "웃긴", "들뜬", "유쾌한"],
+  flutter: ["설레는", "두근거리는", "수줍은", "기대되는", "간질간질한"],
+  affection: ["다정한", "사랑스러운", "애틋한", "고마운", "서로에게 집중한"],
+  stillness: ["조용한", "차분한", "평화로운", "나른한", "감성적인"],
+  complicated: ["어색한", "아쉬운", "긴장되는", "서운한", "생각이 많은"],
+  special: ["행복한", "벅찬", "기억하고 싶은", "시간이 멈췄으면 하는", "오래 남을 것 같은"],
+};
+
+export const ATMOSPHERES: readonly EmotionDefinition[] = ATMOSPHERE_CATEGORY_DEFINITIONS.flatMap((category) =>
+  atmosphereLabels[category.id].map((label, index) => ({
+    id: `atmosphere-${category.id}-${index + 1}`,
+    category: category.id,
+    label,
+    icon: category.icon,
+    color: category.color,
+    enabled: true,
+  })),
+);
+
 export type MissionInputMode = MissionType | "choice";
 export type MissionInputType = "audio-recording" | "image-capture" | "video-capture" | "short-text" | "emotion-select" | "atmosphere-select";
 export type MissionCapability = "microphone" | "camera" | "media-library";
@@ -119,11 +180,11 @@ export type MissionTemplate = {
 };
 
 export const MISSION_TYPE_WEIGHTS: Record<MissionType, number> = {
-  audio: 0.2,
-  photo: 0.2,
-  video: 0.1,
-  text: 0.3,
-  emotion: 0.2,
+  photo: 0.3,
+  video: 0.25,
+  audio: 0.25,
+  text: 0.1,
+  emotion: 0.1,
 };
 
 type LegacyMissionTemplate = Omit<MissionTemplate, "category" | "inputType" | "maxDurationSeconds" | "maxLength" | "requiredCapabilities">;
@@ -138,7 +199,7 @@ function inputTypeFor(type: MissionType, inputMode: MissionInputMode): MissionIn
 
 function capabilitiesFor(type: MissionType): readonly MissionCapability[] {
   if (type === "audio") return ["microphone"];
-  if (type === "photo" || type === "video") return ["camera", "media-library"];
+  if (type === "photo" || type === "video") return ["media-library"];
   return [];
 }
 
@@ -166,20 +227,20 @@ function activeTemplate(value: Omit<MissionTemplate, "type" | "inputMode" | "dur
 }
 
 export const ACTIVE_MISSION_TEMPLATES: readonly MissionTemplate[] = [
-  activeTemplate({ id: "audio-current-sound", category: "audio", title: "지금의 소리", prompt: "지금 이 순간의 소리를 잠깐 남겨주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "audio-current-sound", category: "audio", title: "지금의 소리", prompt: "지금 들리는 소리를 잠깐 남겨주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
   activeTemplate({ id: "audio-memorable-voice", category: "audio", title: "기억할 목소리", prompt: "지금 남기고 싶은 말을 짧게 들려주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
-  activeTemplate({ id: "audio-our-words", category: "audio", title: "우리의 한마디", prompt: "둘의 목소리가 담긴 순간을 남겨주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
-  activeTemplate({ id: "photo-present-scene", category: "photo", title: "눈앞의 순간", prompt: "지금 기억하고 싶은 장면을 한 장 남겨주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "audio-our-words", category: "audio", title: "우리의 한마디", prompt: "둘의 목소리가 담긴 짧은 기록을 남겨주세요.", inputType: "audio-recording", maxDurationSeconds: 10, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "photo-present-scene", category: "photo", title: "눈앞의 장면", prompt: "지금 기억하고 싶은 장면을 한 장 남겨주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
   activeTemplate({ id: "photo-piece-of-today", category: "photo", title: "오늘의 조각", prompt: "오늘을 떠올리게 할 무언가를 찍어주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
-  activeTemplate({ id: "photo-us-now", category: "photo", title: "지금의 우리", prompt: "지금 둘의 순간을 자유롭게 남겨주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
-  activeTemplate({ id: "video-brief-movement", category: "video", title: "잠깐의 움직임", prompt: "지금의 순간을 짧은 영상으로 남겨주세요.", inputType: "video-capture", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "photo-us-now", category: "photo", title: "지금의 우리", prompt: "지금 둘의 모습을 자유롭게 남겨주세요.", inputType: "image-capture", maxDurationSeconds: null, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "video-brief-movement", category: "video", title: "잠깐의 움직임", prompt: "지금을 짧은 영상으로 남겨주세요.", inputType: "video-capture", maxDurationSeconds: 10, maxLength: null, audience: "recipient", enabled: true, weight: 1 }),
   activeTemplate({ id: "video-our-few-seconds", category: "video", title: "우리의 몇 초", prompt: "나중에 다시 보고 싶은 몇 초를 담아주세요.", inputType: "video-capture", maxDurationSeconds: 10, maxLength: null, audience: "couple", enabled: true, weight: 1 }),
   activeTemplate({ id: "text-memorable-words", category: "text", title: "기억할 한마디", prompt: "지금 기억하고 싶은 말을 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "recipient", enabled: true, weight: 1 }),
   activeTemplate({ id: "text-todays-line", category: "text", title: "오늘의 한 줄", prompt: "오늘을 한 줄로 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "recipient", enabled: true, weight: 1 }),
-  activeTemplate({ id: "text-title-of-now", category: "text", title: "지금의 제목", prompt: "이 순간에 제목을 붙여주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 50, audience: "recipient", enabled: true, weight: 1 }),
-  activeTemplate({ id: "text-next-us", category: "text", title: "다음의 우리", prompt: "함께하고 싶은 다음 순간을 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "couple", enabled: true, weight: 1 }),
-  activeTemplate({ id: "emotion-current-heart", category: "emotion", title: "지금의 마음", prompt: "지금 가장 가까운 마음을 골라주세요.", inputType: "emotion-select", maxDurationSeconds: null, maxLength: 30, audience: "recipient", enabled: true, weight: 1, options: ["편안해요", "신나요", "설레요", "다정해요", "차분해요", "행복해요", "고마워요", "포근해요", "장난치고 싶어요", "아쉬워요", "피곤해요", "복잡해요"] }),
-  activeTemplate({ id: "emotion-our-atmosphere", category: "emotion", title: "둘의 분위기", prompt: "지금 둘 사이의 분위기를 골라주세요.", inputType: "atmosphere-select", maxDurationSeconds: null, maxLength: 30, audience: "couple", enabled: true, weight: 1, options: ["편안한", "장난스러운", "설레는", "다정한", "조용한", "신나는", "포근한", "웃긴", "어색한", "아쉬운", "특별한"] }),
+  activeTemplate({ id: "text-title-of-now", category: "text", title: "지금의 제목", prompt: "지금에 제목을 붙여주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 50, audience: "recipient", enabled: true, weight: 1 }),
+  activeTemplate({ id: "text-next-us", category: "text", title: "다음의 우리", prompt: "함께하고 싶은 다음 시간을 남겨주세요.", inputType: "short-text", maxDurationSeconds: null, maxLength: 80, audience: "couple", enabled: true, weight: 1 }),
+  activeTemplate({ id: "emotion-current-heart", category: "emotion", title: "지금의 마음", prompt: "지금 가장 가까운 마음을 골라주세요.", inputType: "emotion-select", maxDurationSeconds: null, maxLength: 30, audience: "recipient", enabled: true, weight: 1, options: EMOTIONS.filter((item) => item.enabled).map((item) => item.label) }),
+  activeTemplate({ id: "emotion-our-atmosphere", category: "emotion", title: "둘의 분위기", prompt: "지금 둘 사이의 분위기를 골라주세요.", inputType: "atmosphere-select", maxDurationSeconds: null, maxLength: 30, audience: "couple", enabled: true, weight: 1, options: ATMOSPHERES.filter((item) => item.enabled).map((item) => item.label) }),
 ];
 
 export const LEGACY_MISSION_TEMPLATES: readonly MissionTemplate[] = [
@@ -189,7 +250,7 @@ export const LEGACY_MISSION_TEMPLATES: readonly MissionTemplate[] = [
   template({ id: "text-one-line", type: "text", title: "한 문장", prompt: "방금 나눈 말 중 기억하고 싶은 한마디를 남겨주세요.", inputMode: "text", durationSeconds: null, audience: "recipient", enabled: true, weight: 1.2 }),
   template({ id: "emotion-now", type: "emotion", title: "지금의 마음", prompt: "지금 이 시간의 기분을 하나만 골라주세요.", inputMode: "emotion", durationSeconds: null, audience: "recipient", enabled: true, weight: 1.2 }),
 
-  template({ id: "sense-sound", type: "audio", title: "귀에 담긴 순간", prompt: "지금 들리는 소리를 10초 남겨주세요.", inputMode: "audio", durationSeconds: 10, audience: "recipient", enabled: true, weight: 1 }),
+  template({ id: "sense-sound", type: "audio", title: "귀에 담긴 소리", prompt: "지금 들리는 소리를 10초 남겨주세요.", inputMode: "audio", durationSeconds: 10, audience: "recipient", enabled: true, weight: 1 }),
   template({ id: "sense-color", type: "photo", title: "오늘의 색", prompt: "지금 보이는 색 하나를 찍어주세요.", inputMode: "photo", durationSeconds: null, audience: "recipient", enabled: true, weight: 1 }),
   template({ id: "sense-nearest", type: "photo", title: "가장 가까운 것", prompt: "지금 가장 가까이 있는 물건을 찍어주세요.", inputMode: "photo", durationSeconds: null, audience: "recipient", enabled: true, weight: 1 }),
   template({ id: "sense-favorite-scene", type: "photo", title: "마음에 든 장면", prompt: "지금 주변에서 가장 마음에 드는 장면을 찍어주세요.", inputMode: "photo", durationSeconds: null, audience: "recipient", enabled: true, weight: 1 }),
@@ -204,18 +265,18 @@ export const LEGACY_MISSION_TEMPLATES: readonly MissionTemplate[] = [
   template({ id: "partner-color", type: "text", title: "너를 닮은 색", prompt: "지금 상대방을 떠올리게 하는 색을 골라주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
 
   template({ id: "couple-place", type: "text", title: "우리의 자리", prompt: "지금 둘이 있는 곳을 한 단어로 표현해주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
-  template({ id: "couple-funny", type: "text", title: "가장 웃긴 순간", prompt: "오늘 가장 웃겼던 순간을 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
+  template({ id: "couple-funny", type: "text", title: "가장 웃긴 기억", prompt: "오늘 가장 웃겼던 일을 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "couple-emoji", type: "text", title: "둘의 분위기", prompt: "지금 둘의 분위기를 이모지 하나로 남겨주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "couple-food", type: "photo", title: "오늘의 한입", prompt: "지금 먹고 있는 것을 찍어주세요.", inputMode: "photo", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
-  template({ id: "couple-again", type: "text", title: "다시 만나고 싶은 순간", prompt: "오늘 다시 하고 싶은 순간을 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
+  template({ id: "couple-again", type: "text", title: "다시 만나고 싶은 기억", prompt: "오늘 다시 하고 싶은 일을 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "couple-song", type: "text", title: "지금의 노래", prompt: "지금 듣고 싶은 노래를 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "couple-next", type: "text", title: "다음에 우리", prompt: "다음에 함께 하고 싶은 것을 한 줄로 남겨주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
-  template({ id: "couple-title", type: "text", title: "이 순간의 제목", prompt: "지금 이 순간에 제목을 붙여주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
+  template({ id: "couple-title", type: "text", title: "지금의 제목", prompt: "지금에 제목을 붙여주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
 
   template({ id: "play-eye-word", type: "text", title: "눈을 보고 한 단어", prompt: "서로 눈을 보고 떠오르는 단어 하나를 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "play-guess-emotion", type: "emotion", title: "마음 맞히기", prompt: "상대방이 고를 것 같은 감정을 예상해주세요.", inputMode: "emotion", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "play-three-letters", type: "text", title: "오늘 세 글자", prompt: "오늘을 세 글자로 표현해주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
-  template({ id: "play-movie-title", type: "text", title: "우리 영화 제목", prompt: "지금의 순간을 영화 제목처럼 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
+  template({ id: "play-movie-title", type: "text", title: "우리 영화 제목", prompt: "지금을 영화 제목처럼 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "play-secret-word", type: "text", title: "둘만 아는 말", prompt: "둘만 알아들을 수 있는 말을 남겨주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
   template({ id: "play-action", type: "text", title: "지금 함께", prompt: "지금 당장 함께 하고 싶은 행동을 적어주세요.", inputMode: "text", durationSeconds: null, audience: "couple", enabled: true, weight: 1 }),
 
@@ -236,7 +297,7 @@ export const LEGACY_MISSION_TEMPLATES: readonly MissionTemplate[] = [
   template({ id: "choice-temperature", type: "emotion", title: "오늘의 온도", prompt: "오늘의 온도와 가장 가까운 것을 골라주세요.", inputMode: "choice", durationSeconds: null, audience: "recipient", enabled: true, weight: 1, options: ["차분함", "따뜻함", "신남", "피곤함", "설렘"] }),
   template({ id: "choice-near-emotion", type: "emotion", title: "가까운 마음", prompt: "지금 더 가까운 감정을 골라주세요.", inputMode: "emotion", durationSeconds: null, audience: "recipient", enabled: true, weight: 1 }),
   template({ id: "choice-return", type: "emotion", title: "다시 오고 싶은 마음", prompt: "오늘 다시 오고 싶은 정도를 골라주세요.", inputMode: "choice", durationSeconds: null, audience: "couple", enabled: true, weight: 1, options: ["천천히 생각해볼래요", "한 번 더", "자주 오고 싶어요", "곧 다시 오고 싶어요", "계속 기억할래요"] }),
-  template({ id: "choice-season", type: "emotion", title: "지금의 계절", prompt: "지금의 순간을 계절로 골라주세요.", inputMode: "choice", durationSeconds: null, audience: "couple", enabled: true, weight: 1, options: ["봄", "여름", "가을", "겨울"] }),
+  template({ id: "choice-season", type: "emotion", title: "지금의 계절", prompt: "지금을 계절로 골라주세요.", inputMode: "choice", durationSeconds: null, audience: "couple", enabled: true, weight: 1, options: ["봄", "여름", "가을", "겨울"] }),
   template({ id: "choice-color", type: "emotion", title: "지금의 색", prompt: "지금의 분위기와 가까운 색을 골라주세요.", inputMode: "choice", durationSeconds: null, audience: "couple", enabled: true, weight: 1, options: ["크림", "딸기", "버터", "하늘", "잎사귀", "회보라"] }),
 ];
 

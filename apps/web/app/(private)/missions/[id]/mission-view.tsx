@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EMOTION_CATEGORY_DEFINITIONS, EMOTIONS, memoryDisplayTitle, userFacingSentence, type EmotionCategoryId } from "@is2u/core/types";
-import { Button, Field, InlineNotice, Input, MissionNote, StatusSticker, Textarea } from "../../../../components/ui";
+import { ATMOSPHERE_CATEGORY_DEFINITIONS, ATMOSPHERES, EMOTION_CATEGORY_DEFINITIONS, EMOTIONS, memoryDisplayTitle, userFacingSentence } from "@is2u/core/types";
+import { Button, Field, InlineNotice, Input, MissionNote, Select, StatusSticker, Textarea } from "../../../../components/ui";
 import { PaperConfirmDialog } from "../../../../components/paper-dialog";
+import { CategorizedChoicePicker } from "../../../../components/categorized-choice-picker";
 import { apiFetch } from "../../../../lib/client";
 import { uploadFile } from "../../../../lib/upload-client";
 
@@ -44,6 +45,7 @@ type Mission = {
     title: string;
     prompt: string;
     inputMode: MissionType | "choice";
+    inputType: "audio-recording" | "image-capture" | "video-capture" | "short-text" | "emotion-select" | "atmosphere-select";
     durationSeconds: number | null;
     maxLength: number | null;
     options?: readonly string[];
@@ -58,6 +60,7 @@ type Payload = {
   canDelete: boolean;
 };
 type Notice = { tone: "info" | "error" | "success"; text: string } | null;
+type DateEventOption = { id: string; title: string | null; status: string; startAt: string; endAt: string };
 
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short" });
 const timeFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
@@ -117,28 +120,6 @@ function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
   </div>;
 }
 
-function EmotionPicker({ emotionId, customEmotion, options, onEmotion, onCustom }: {
-  emotionId: string;
-  customEmotion: string;
-  options?: readonly string[];
-  onEmotion: (id: string) => void;
-  onCustom: (value: string) => void;
-}) {
-  const [category, setCategory] = useState<EmotionCategoryId>("comfort");
-  const visible = options
-    ? options.map((label, index) => ({ id: `choice-${index}`, label, icon: "✦", color: "butter" }))
-    : EMOTIONS.filter((item) => item.enabled && item.category === category);
-
-  return <section className="emotion-diary" aria-label="마음 고르기">
-    {!options && <div className="emotion-tabs" role="tablist" aria-label="감정 분류">{EMOTION_CATEGORY_DEFINITIONS.map((item) => <button type="button" role="tab" aria-selected={category === item.id} key={item.id} className={`emotion-tab emotion-${item.color}`} onClick={() => setCategory(item.id)}>{item.label}</button>)}</div>}
-    <div className="emotion-paper-grid" role="radiogroup" aria-label="감정 선택">{visible.map((item, index) => {
-      const selected = options ? customEmotion === item.label : emotionId === item.id;
-      return <button type="button" role="radio" key={item.id} className={`emotion-paper emotion-${item.color} emotion-angle-${index % 3} ${selected ? "selected" : ""}`} aria-checked={selected} onClick={() => options ? (onEmotion(""), onCustom(item.label)) : onEmotion(item.id)}><small aria-hidden="true">{item.icon}</small>{item.label}<span className="emotion-check" aria-hidden="true">✓</span></button>;
-    })}</div>
-    <label className="custom-emotion-note"><span>내 말로 적기</span><input value={options && options.includes(customEmotion) ? "" : customEmotion} maxLength={30} placeholder="말로 설명하기 어려운데 그냥 좋아" onChange={(event) => { onEmotion(""); onCustom(event.target.value); }} /><small>{options && options.includes(customEmotion) ? 0 : customEmotion.length}/30</small></label>
-  </section>;
-}
-
 function CapturePicker({ kind, file, disabled, onFile }: { kind: "photo" | "video"; file: File | null; disabled: boolean; onFile: (file: File | null) => void }) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
@@ -176,6 +157,8 @@ export function MissionView({ id }: { id: string }) {
   const [customTitle, setCustomTitle] = useState("");
   const [emotionId, setEmotionId] = useState("");
   const [customEmotion, setCustomEmotion] = useState("");
+  const [dateEventId, setDateEventId] = useState("");
+  const [events, setEvents] = useState<DateEventOption[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -187,6 +170,7 @@ export function MissionView({ id }: { id: string }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removing, setRemoving] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  const queryEditHandled = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -204,6 +188,34 @@ export function MissionView({ id }: { id: string }) {
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void apiFetch<{ dateEvents: DateEventOption[] }>("/api/date-events")
+      .then((result) => setEvents(result.dateEvents))
+      .catch(() => undefined);
+  }, []);
+
+  function beginEdit(current: Payload) {
+    if (!current.memory) return;
+    const atmosphere = current.mission.copy.inputType === "atmosphere-select";
+    const selected = atmosphere
+      ? ATMOSPHERES.find((item) => item.label === current.memory?.emotion)
+      : EMOTIONS.find((item) => item.label === current.memory?.emotion);
+    setRedoing(true);
+    setCustomTitle(current.memory.customTitle ?? "");
+    setText(current.memory.text ?? "");
+    setEmotionId(selected?.id ?? "");
+    setCustomEmotion(selected ? "" : current.memory.emotion ?? "");
+    setDateEventId(current.dateEvent?.id ?? "");
+    setFile(null);
+    setProgress(null);
+    setNotice(null);
+  }
+
+  useEffect(() => {
+    if (!payload || queryEditHandled.current || typeof window === "undefined") return;
+    queryEditHandled.current = true;
+    if (payload.canEdit && payload.memory && new URL(window.location.href).searchParams.get("edit") === "1") beginEdit(payload);
+  }, [payload]);
   const processing = useMemo(() => {
     const original = findAsset(payload?.memory ?? null, "original");
     return original?.processingStatus === "pending" || original?.processingStatus === "processing";
@@ -244,7 +256,7 @@ export function MissionView({ id }: { id: string }) {
     const mission = payload?.mission;
     if (!mission || busy) return;
     if (["photo", "video", "audio"].includes(mission.type) && !file && !redoing) {
-      setNotice({ tone: "error", text: "먼저 지금의 순간을 하나 담아주세요" });
+      setNotice({ tone: "error", text: "먼저 남길 것을 하나 담아주세요" });
       return;
     }
     if (mission.type === "emotion" && !emotionId && !customEmotion.trim()) {
@@ -255,10 +267,12 @@ export function MissionView({ id }: { id: string }) {
     setNotice(null);
     try {
       const hasMedia = ["photo", "video", "audio"].includes(mission.type);
+      const isAtmosphere = mission.copy.inputType === "atmosphere-select";
+      const selectedAtmosphere = isAtmosphere ? ATMOSPHERES.find((item) => item.id === emotionId) : null;
       if (redoing && hasMedia && !file && payload.memory) {
         await apiFetch(`/api/memories/${payload.memory.id}`, {
           method: "PUT",
-          body: JSON.stringify({ customTitle, text: payload.memory.text }),
+          body: JSON.stringify({ customTitle, text: payload.memory.text, dateEventId: dateEventId || null }),
         });
         setNotice({ tone: "success", text: "추억을 수정했어요" });
         window.setTimeout(() => window.location.assign("/home"), 500);
@@ -269,9 +283,12 @@ export function MissionView({ id }: { id: string }) {
         body: JSON.stringify({
           memoryType: mission.type,
           text: mission.type === "text" ? text : undefined,
-          emotionId: mission.type === "emotion" && emotionId ? emotionId : undefined,
-          customEmotion: mission.type === "emotion" && !emotionId ? customEmotion.trim() : undefined,
+          emotionId: mission.type === "emotion" && !isAtmosphere && emotionId ? emotionId : undefined,
+          customEmotion: mission.type === "emotion" && isAtmosphere
+            ? selectedAtmosphere?.label ?? customEmotion.trim()
+            : mission.type === "emotion" && !emotionId ? customEmotion.trim() : undefined,
           customTitle: redoing ? customTitle : undefined,
+          dateEventId: redoing ? dateEventId || null : undefined,
           idempotencyKey: crypto.randomUUID(),
           replaceExisting: redoing,
           deferReplacement: redoing && hasMedia,
@@ -284,7 +301,7 @@ export function MissionView({ id }: { id: string }) {
       if (redoing && hasMedia) {
         await apiFetch(`/api/missions/${id}/finalize-replacement`, { method: "POST", body: JSON.stringify({ memoryId: result.memory.id }) });
       }
-      setNotice({ tone: "success", text: redoing ? "추억을 수정했어요" : "이 순간을 조용히 보관했어요" });
+      setNotice({ tone: "success", text: redoing ? "추억을 수정했어요" : "이 추억을 조용히 보관했어요" });
       window.setTimeout(() => window.location.assign("/home"), 700);
     } catch {
       setNotice({ tone: "error", text: "지금은 보관하지 못했어요 입력한 내용은 두고 잠시 뒤 다시 눌러주세요" });
@@ -322,7 +339,7 @@ export function MissionView({ id }: { id: string }) {
     if (!payload?.memory || busy) return;
     setBusy(true);
     try {
-      await apiFetch(`/api/memories/${payload.memory.id}`, { method: "DELETE" });
+      await apiFetch(`/api/missions/${id}`, { method: "DELETE" });
       setRemoving(true);
       window.setTimeout(() => window.location.assign("/home"), 260);
     } catch {
@@ -351,9 +368,9 @@ export function MissionView({ id }: { id: string }) {
       {memory.type === "text" && <blockquote className="expanded-text-memory">“{memory.text}”</blockquote>}
       {memory.type === "emotion" && <div className="expanded-emotion-memory"><span aria-hidden="true">✦</span><strong>{memory.emotion}</strong></div>}
       <MemoryMedia memory={memory} urls={urls} onZoom={setZoomUrl} onMediaError={(text) => setNotice({ tone: "error", text })} onRetry={() => void load()} />
-      {hasOriginal && ["photo", "video", "audio"].includes(memory.type) && <div className="original-download-row"><p>이 순간을 기기에 간직할 수 있어요</p><Button variant="secondary" size="small" onClick={() => void downloadOriginal(memory.id)}>{memory.type === "photo" ? "원본 사진 저장" : memory.type === "video" ? "원본 영상 저장" : "원본 음성 저장"}</Button></div>}
+      {hasOriginal && ["photo", "video", "audio"].includes(memory.type) && <div className="original-download-row"><p>이 추억을 기기에 간직할 수 있어요</p><Button variant="secondary" size="small" onClick={() => void downloadOriginal(memory.id)}>{memory.type === "photo" ? "원본 사진 저장" : memory.type === "video" ? "원본 영상 저장" : "원본 음성 저장"}</Button></div>}
       {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
-      <div className="memory-detail-actions">{payload.canEdit && <Button variant="secondary" onClick={() => { const option = mission.copy.options?.includes(memory.emotion ?? "") ? memory.emotion : null; const known = option ? null : EMOTIONS.find((item) => item.label === memory.emotion); setRedoing(true); setCustomTitle(memory.customTitle ?? ""); setText(memory.text ?? ""); setEmotionId(known?.id ?? ""); setCustomEmotion(option ?? (known ? "" : memory.emotion ?? "")); setFile(null); setNotice(null); }}>수정하기</Button>}{payload.canDelete && <Button variant="danger" onClick={() => setConfirmDelete(true)}>추억 떼기</Button>}</div>
+      <div className="memory-detail-actions">{payload.canEdit && <Button variant="secondary" onClick={() => beginEdit(payload)}>수정하기</Button>}{payload.canDelete && <Button variant="danger" onClick={() => setConfirmDelete(true)}>추억 떼기</Button>}</div>
       {zoomUrl && <PhotoLightbox url={zoomUrl} onClose={() => setZoomUrl(null)} />}
       {confirmDelete && <PaperConfirmDialog title="이 추억을 여기서 떼어낼까요" description="떼어낸 추억은 잠시 동안 되돌릴 수 있어요" cancelLabel="아직 남겨둘게요" confirmLabel="추억 떼기" busy={busy} onCancel={() => setConfirmDelete(false)} onConfirm={() => void deleteMemory()} />}
     </div>;
@@ -367,13 +384,24 @@ export function MissionView({ id }: { id: string }) {
     <p className="mission-prompt">{userFacingSentence(mission.copy.prompt)}</p>
     {redoing && <Field label="제목" hint={`${customTitle.length}/30`}><Input value={customTitle} maxLength={30} placeholder="이 추억에 이름을 붙여주세요" onChange={(event) => setCustomTitle(event.target.value)} /></Field>}
     {mission.type === "text" && <Textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={mission.copy.maxLength ?? 300} rows={3} placeholder="한 문장만 남겨주세요" />}
-    {mission.type === "emotion" && <EmotionPicker emotionId={emotionId} customEmotion={customEmotion} options={mission.copy.inputMode === "choice" ? mission.copy.options : undefined} onEmotion={(value) => { setEmotionId(value); if (value) setCustomEmotion(""); }} onCustom={(value) => { setCustomEmotion(value); if (value) setEmotionId(""); }} />}
+    {mission.type === "emotion" && <CategorizedChoicePicker
+      categories={mission.copy.inputType === "atmosphere-select" ? ATMOSPHERE_CATEGORY_DEFINITIONS : EMOTION_CATEGORY_DEFINITIONS}
+      choices={mission.copy.inputType === "atmosphere-select" ? ATMOSPHERES : EMOTIONS}
+      selectedId={emotionId}
+      customValue={customEmotion}
+      selectionLabel={mission.copy.inputType === "atmosphere-select" ? "선택한 분위기" : "선택한 마음"}
+      ariaLabel={mission.copy.inputType === "atmosphere-select" ? "둘의 분위기 고르기" : "지금의 마음 고르기"}
+      placeholder={mission.copy.inputType === "atmosphere-select" ? "우리 사이를 내 말로 적어주세요" : "말로 설명하기 어려운데 그냥 좋아"}
+      onSelect={(value) => { setEmotionId(value); setCustomEmotion(""); }}
+      onCustom={(value) => { setCustomEmotion(value); if (value) setEmotionId(""); }}
+    />}
     {mission.type === "photo" && <CapturePicker kind="photo" file={file} disabled={busy} onFile={setFile} />}
     {mission.type === "video" && <CapturePicker kind="video" file={file} disabled={busy} onFile={setFile} />}
     {mission.type === "audio" && <div className="audio-capture">{recordingSeconds === null ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void recordAudio()}>{file ? "다시 녹음하기" : "10초 소리 담기"}</Button> : <Button type="button" variant="secondary" disabled={busy} onClick={() => recorder.current?.stop()}><span className="recording-count">{recordingSeconds}</span> · 녹음 마치기</Button>}{file && <AudioReview file={file} />}</div>}
+    {redoing && <Field label="연결할 약속" hint="선택 사항"><Select value={dateEventId} onChange={(event) => setDateEventId(event.target.value)}><option value="">약속에 연결하지 않기</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title || "이름 없는 약속"}</option>)}</Select></Field>}
     {progress !== null && <div className="paper-progress"><progress max={100} value={progress}>{progress}%</progress><span>{progress}%</span></div>}
     {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
-    <div className="mission-actions"><Button disabled={busy} onClick={requestComplete}>{busy ? "보관하고 있어요…" : redoing ? "수정 내용 저장하기" : "이 순간 보관하기"}</Button>{redoing ? <Button variant="quiet" disabled={busy} onClick={() => setRedoing(false)}>돌아가기</Button> : <Button variant="quiet" disabled={busy} onClick={() => void skip()}>이번에는 그냥 지나가기</Button>}</div>
+    <div className="mission-actions"><Button disabled={busy} onClick={requestComplete}>{busy ? "보관하고 있어요…" : redoing ? "수정 내용 저장하기" : "이 추억 보관하기"}</Button>{redoing ? <Button variant="quiet" disabled={busy} onClick={() => setRedoing(false)}>돌아가기</Button> : <Button variant="quiet" disabled={busy} onClick={() => void skip()}>이번에는 그냥 지나가기</Button>}</div>
     {confirmRedo && <PaperConfirmDialog title="이 추억을 수정할까요" description="수정 내용을 모두 저장한 뒤에 지금 추억과 바꿔 붙일게요" cancelLabel="조금 더 생각할게요" confirmLabel="수정 내용 저장하기" busy={busy} onCancel={() => setConfirmRedo(false)} onConfirm={() => void performComplete()} />}
   </MissionNote>;
 }

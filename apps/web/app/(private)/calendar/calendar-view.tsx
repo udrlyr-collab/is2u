@@ -7,6 +7,7 @@ import { expandSeoulDayKeys, parseSeoulDateTimeInput } from "@is2u/core/dates";
 import { appointmentView, compareAppointmentDayKeys, compareAppointmentEvents, type AppointmentView } from "@is2u/core/ordering";
 import { Button, Field, InlineNotice, Input, StatusSticker } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
+import { PageHeader } from "../../../components/page-shell";
 import { apiFetch } from "../../../lib/client";
 
 type DateEvent = {
@@ -198,10 +199,11 @@ export function CalendarView() {
   const [notice, setNotice] = useState<Notice>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [connected, setConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
-    apiFetch<{ dateEvents: DateEvent[] }>("/api/date-events")
-      .then((result) => setEvents(result.dateEvents))
+    apiFetch<{ dateEvents: DateEvent[]; activeCouple: unknown | null }>("/api/date-events")
+      .then((result) => { setEvents(result.dateEvents); setConnected(Boolean(result.activeCouple)); })
       .catch(() => setNotice({ tone: "error", text: "약속을 불러오지 못했어요 새로고침 뒤 다시 확인해 주세요" }))
       .finally(() => setLoading(false));
   }, []);
@@ -260,7 +262,8 @@ export function CalendarView() {
   }
 
   return <section className="calendar-stack">
-    <header className="calendar-intro"><div><p className="paper-label">DATE NOTES</p><h1>우리의 약속들</h1><p>지금의 약속부터 지난 메모까지 흐름대로 모았어요</p></div><Button variant="sticker" onClick={() => { setOpen((value) => !value); setNotice(null); }}>{open ? "접어두기" : "+ 새 약속"}</Button></header>
+    <PageHeader label="DATE NOTES" title="우리의 약속들" action={connected === false ? <Link className="button button-sticker button-regular" href="/settings#connection">상대와 연결하기</Link> : <Button variant="sticker" disabled={connected === null} onClick={() => { setOpen((value) => !value); setNotice(null); }}>{open ? "접어두기" : "+ 새 약속"}</Button>} />
+    {connected === false && <aside className="connection-onboarding compact"><p>함께 쓸 상대를 연결하면 약속과 미션을 만들 수 있어요</p></aside>}
     {open && <form className="date-form" onSubmit={create}>
       <span className="form-tape" aria-hidden="true" />
       <p className="form-note-title">새 약속 메모 · 서울 시간</p>

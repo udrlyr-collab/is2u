@@ -1,6 +1,9 @@
 import { DateTime, Interval } from "luxon";
 import { MISSION_TEMPLATES, MISSION_TYPES, MISSION_TYPE_WEIGHTS, type MissionTemplate, type MissionType } from "./types";
 
+export const MISSION_END_BUFFER_MINUTES = 15;
+export const OPEN_SCHEDULED_MISSION_LIMIT_PER_USER = 2;
+
 export type MissionWindowOptions = {
   timezone?: string;
   notificationStartHour?: number;
@@ -103,6 +106,27 @@ export function chooseMissionTimeInRange(
   return candidates.at(-1)!.end.toUTC().toJSDate();
 }
 
+export function randomMissionIntervalMinutes(minMinutes: number, maxMinutes: number, random = Math.random): number {
+  if (!Number.isInteger(minMinutes) || !Number.isInteger(maxMinutes) || minMinutes < 1 || minMinutes > maxMinutes) {
+    throw new Error("미션 간격 범위가 올바르지 않습니다.");
+  }
+  return minMinutes + Math.floor(random() * (maxMinutes - minMinutes + 1));
+}
+
+export function nextRecurringMissionAt(
+  baseline: Date,
+  eventEndAt: Date,
+  minMinutes: number,
+  maxMinutes: number,
+  random = Math.random,
+  endBufferMinutes = MISSION_END_BUFFER_MINUTES,
+): Date | null {
+  const intervalMinutes = randomMissionIntervalMinutes(minMinutes, maxMinutes, random);
+  const candidate = new Date(baseline.getTime() + intervalMinutes * 60_000);
+  const lastAllowedAt = new Date(eventEndAt.getTime() - endBufferMinutes * 60_000);
+  return candidate <= lastAllowedAt ? candidate : null;
+}
+
 export function chooseMissionType(previous: MissionType | null, random = Math.random): MissionType {
   const candidates = previous ? MISSION_TYPES.filter((type) => type !== previous) : [...MISSION_TYPES];
   return candidates[Math.floor(random() * candidates.length)] ?? candidates[0];
@@ -149,19 +173,15 @@ export function chooseTestMissionTemplate(
   category: TestMissionCategory | null,
   templateId: string | null,
   random = Math.random,
+  recentTemplateIds: readonly string[] = [],
 ): MissionTemplate {
   const enabled = MISSION_TEMPLATES.filter((item) => item.enabled && TEST_MISSION_CATEGORIES.includes(item.category as TestMissionCategory));
   if (templateId) {
     const selected = enabled.find((item) => item.id === templateId && (!category || item.category === category));
-    if (!selected) throw new Error("선택한 테스트 미션을 사용할 수 없습니다.");
+    if (!selected) throw new Error("선택한 확인용 미션을 사용할 수 없습니다.");
     return selected;
   }
-  const categories = category ? [category] : TEST_MISSION_CATEGORIES.filter((item) => enabled.some((template) => template.category === item));
-  const selectedCategory = categories[Math.min(categories.length - 1, Math.floor(random() * categories.length))];
-  const candidates = enabled.filter((item) => item.category === selectedCategory);
-  const selected = candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))];
-  if (!selected) throw new Error("사용 가능한 테스트 미션이 없습니다.");
-  return selected;
+  return chooseMissionTemplate(recentTemplateIds, category, random);
 }
 
 export function chooseRecipient(
@@ -172,6 +192,93 @@ export function chooseRecipient(
   if (first.delivered < second.delivered) return first.id;
   if (second.delivered < first.delivered) return second.id;
   return random() < 0.5 ? first.id : second.id;
+}
+
+export type ScheduledRecipientCandidate = {
+  id: string;
+  delivered: number;
+  open: number;
+};
+
+export function chooseScheduledRecipient(
+  candidates: readonly ScheduledRecipientCandidate[],
+  recentRecipientIds: readonly string[] = [],
+  random = Math.random,
+  openLimit = OPEN_SCHEDULED_MISSION_LIMIT_PER_USER,
+): string | null {
+  let eligible = candidates.filter((candidate) => candidate.open < openLimit);
+  if (!eligible.length) return null;
+
+  if (recentRecipientIds.length >= 2 && recentRecipientIds[0] === recentRecipientIds[1]) {
+    const withoutThirdRepeat = eligible.filter((candidate) => candidate.id !== recentRecipientIds[0]);
+    if (withoutThirdRepeat.length) eligible = withoutThirdRepeat;
+  }
+
+  const leastDelivered = Math.min(...eligible.map((candidate) => candidate.delivered));
+  const balanced = eligible.filter((candidate) => candidate.delivered === leastDelivered);
+  if (balanced.length) eligible = balanced;
+
+  const leastOpen = Math.min(...eligible.map((candidate) => candidate.open));
+  const leastBurdened = eligible.filter((candidate) => candidate.open === leastOpen);
+  if (leastBurdened.length) eligible = leastBurdened;
+
+  return eligible[Math.min(eligible.length - 1, Math.floor(random() * eligible.length))]?.id ?? null;
+}
+
+export function chooseScheduledMissionTemplate(
+  options: {
+    recentTemplateIds?: readonly string[];
+    usedTemplateIdsForDate?: readonly string[];
+    supportedCapabilities?: readonly string[];
+  } = {},
+  random = Math.random,
+): MissionTemplate {
+  const supported = options.supportedCapabilities ? new Set(options.supportedCapabilities) : null;
+  const available = MISSION_TEMPLATES.filter((template) => template.enabled && (
+    !supported || template.requiredCapabilities.every((capability) => supported.has(capability))
+  ));
+  if (!available.length) throw new Error("사용 가능한 미션 템플릿이 없습니다.");
+
+  const usedForDate = new Set(options.usedTemplateIdsForDate ?? []);
+  const unusedForDate = available.filter((template) => !usedForDate.has(template.id));
+  let pool = unusedForDate.length ? unusedForDate : available;
+  const recent = options.recentTemplateIds ?? [];
+
+  if (recent.length >= 2) {
+    const first = available.find((template) => template.id === recent[0]);
+    const second = available.find((template) => template.id === recent[1]);
+    if (first && second && first.category === second.category) {
+      const withoutThirdCategory = pool.filter((template) => template.category !== first.category);
+      if (withoutThirdCategory.length) pool = withoutThirdCategory;
+    }
+  }
+
+  const recentThree = new Set(recent.slice(0, 3));
+  const withoutRecent = pool.filter((template) => !recentThree.has(template.id));
+  if (withoutRecent.length) pool = withoutRecent;
+  else {
+    const withoutImmediateRepeat = pool.filter((template) => template.id !== recent[0]);
+    if (withoutImmediateRepeat.length) pool = withoutImmediateRepeat;
+  }
+
+  const eligibleTypes = MISSION_TYPES.filter((type) => pool.some((template) => template.type === type));
+  const totalTypeWeight = eligibleTypes.reduce((sum, type) => sum + Math.max(0, MISSION_TYPE_WEIGHTS[type]), 0);
+  let typeCursor = random() * totalTypeWeight;
+  let selectedType = eligibleTypes[0];
+  for (const type of eligibleTypes) {
+    typeCursor -= Math.max(0, MISSION_TYPE_WEIGHTS[type]);
+    if (typeCursor < 0) { selectedType = type; break; }
+  }
+
+  const templates = pool.filter((template) => template.type === selectedType);
+  const totalTemplateWeight = templates.reduce((sum, template) => sum + Math.max(0, template.weight), 0);
+  if (totalTemplateWeight <= 0) return templates[0];
+  let templateCursor = random() * totalTemplateWeight;
+  for (const template of templates) {
+    templateCursor -= Math.max(0, template.weight);
+    if (templateCursor < 0) return template;
+  }
+  return templates.at(-1)!;
 }
 
 export function seoulWeekBounds(at: Date): { start: Date; end: Date } {

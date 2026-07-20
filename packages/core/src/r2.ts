@@ -78,3 +78,11 @@ export async function createOriginalDownload(key: string, filename: string): Pro
   }), { expiresIn: 300 });
 }
 
+export async function createBoardAssetView(key: string): Promise<string> {
+  const env = getServerEnv();
+  return getSignedUrl(getMediaR2(), new GetObjectCommand({
+    Bucket: env.R2_MEDIA_BUCKET,
+    Key: key,
+    ResponseCacheControl: "private, max-age=300",
+  }), { expiresIn: 600 });
+}

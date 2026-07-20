@@ -1,7 +1,7 @@
 {
   "name": "그대로 멈춰라",
   "short_name": "그대로 멈춰라",
-  "description": "둘만의 평범한 순간을 조용히 보관하는 작은 기억 상자",
+  "description": "둘만의 평범한 날을 조용히 보관하는 작은 기억 상자",
   "start_url": "/home",
   "scope": "/",
   "display": "standalone",

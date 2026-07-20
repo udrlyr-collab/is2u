@@ -13,7 +13,7 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
   const { id } = await context.params;
   const { memoryId } = z.object({ memoryId: z.uuid() }).parse(await readJson(request));
   const db = getDb();
-  const [mission] = await db.select().from(missions).where(and(eq(missions.id, id), eq(missions.recipientId, session.user.id))).limit(1);
+  const [mission] = await db.select().from(missions).where(and(eq(missions.id, id), eq(missions.recipientId, session.user.id), isNull(missions.deletedAt))).limit(1);
   const [replacement] = await db.select().from(memories).where(and(
     eq(memories.id, memoryId),
     eq(memories.missionId, id),

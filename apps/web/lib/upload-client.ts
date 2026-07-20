@@ -80,3 +80,14 @@ export async function uploadFile(memoryId: string, file: File, onProgress: (perc
   onProgress(100);
   return completed.asset.id;
 }
+
+export async function uploadBoardImage(boardId: string, file: File, onProgress: (percent: number) => void): Promise<string> {
+  const created = await apiFetch<{ asset: { id: string }; url: string }>("/api/board/assets", {
+    method: "POST",
+    body: JSON.stringify({ boardId, filename: file.name, mimeType: file.type, size: file.size }),
+  });
+  await putWithProgress(created.url, file, (loaded) => onProgress(Math.round((loaded / file.size) * 100)));
+  await apiFetch(`/api/board/assets/${created.asset.id}/complete`, { method: "POST", body: JSON.stringify({}) });
+  onProgress(100);
+  return created.asset.id;
+}

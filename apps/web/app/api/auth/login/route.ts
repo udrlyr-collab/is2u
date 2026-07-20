@@ -1,59 +1,55 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@is2u/db/client";
-import { users } from "@is2u/db/schema";
-import { getServerEnv } from "@is2u/core/env";
+import { auditEvents, users } from "@is2u/db/schema";
 import { loginSchema } from "@is2u/core/validation";
 import {
+  attachSessionCookies,
+  attachDeviceCookie,
   createSession,
-  CSRF_COOKIE,
-  DEVICE_COOKIE,
-  deviceCookieValue,
   deviceIdFrom,
   failedLoginCount,
   getSession,
+  publicUser,
   recordLoginAttempt,
+  requireAuthOrigin,
   revokeSession,
-  sessionCookieName,
-  verifyPin,
+  verifyPassword,
 } from "../../../../lib/auth";
-import { cookie, json, readJson, withApiErrors } from "../../../../lib/http";
+import { json, readJson, withApiErrors } from "../../../../lib/http";
 
 export const runtime = "nodejs";
 
-function attachDeviceCookie(response: Response, deviceId: string): Response {
-  const secure = getServerEnv().NODE_ENV === "production";
-  response.headers.append("Set-Cookie", cookie(DEVICE_COOKIE, deviceCookieValue(deviceId), {
-    httpOnly: true,
-    secure,
-    sameSite: "Lax",
-    maxAge: 365 * 24 * 60 * 60,
-  }));
-  return response;
-}
+const LOGIN_ERROR = "아이디 또는 비밀번호가 맞지 않아요";
+const LOGIN_LIMIT_ERROR = "로그인 시도가 많아요 잠시 후 다시 시도해 주세요";
 
 export const POST = withApiErrors(async (request: Request) => {
+  requireAuthOrigin(request);
   const input = loginSchema.parse(await readJson(request));
   const deviceId = deviceIdFrom(request);
-  const failures = await failedLoginCount(request, deviceId);
-  if (failures >= 5) {
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-    return attachDeviceCookie(json({ error: "PIN을 확인하거나 잠시 뒤 다시 시도해 주세요" }, 429), deviceId);
+  const [user] = await getDb().select({
+    id: users.id,
+    displayName: users.displayName,
+    username: users.username,
+    gender: users.gender,
+    passwordHash: users.passwordHash,
+    role: users.role,
+    accountStatus: users.accountStatus,
+  }).from(users).where(eq(users.username, input.username)).limit(1);
+  const valid = await verifyPassword(user?.passwordHash, input.password);
+  const loginAllowed = Boolean(valid && user?.username && user.accountStatus === "active");
+  await recordLoginAttempt(request, deviceId, loginAllowed, input.username);
+  if (!loginAllowed || !user?.username) {
+    const failures = await failedLoginCount(request, deviceId, input.username);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, Math.max(300, failures * 300))));
+    return attachDeviceCookie(json({ error: failures >= 5 ? LOGIN_LIMIT_ERROR : LOGIN_ERROR }, failures >= 5 ? 429 : 401), deviceId);
   }
-  if (failures > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, failures * 300)));
-
-  const userId = await verifyPin(input.pin);
-  await recordLoginAttempt(request, deviceId, Boolean(userId));
-  if (!userId) return attachDeviceCookie(json({ error: "PIN을 확인하거나 잠시 뒤 다시 시도해 주세요" }, 401), deviceId);
 
   const previous = await getSession(request);
   if (previous) await revokeSession(previous.sessionId);
-  const created = await createSession(userId, deviceId);
-  const [user] = await getDb().select({ id: users.id, displayName: users.displayName, roleLabel: users.roleLabel }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) throw new Error("고정 사용자 데이터가 없습니다.");
-
-  const secure = getServerEnv().NODE_ENV === "production";
-  const response = json({ user, csrfToken: created.csrf });
-  response.headers.append("Set-Cookie", cookie(sessionCookieName(), created.token, { httpOnly: true, secure, sameSite: "Lax", maxAge: 30 * 24 * 60 * 60 }));
-  response.headers.append("Set-Cookie", cookie(CSRF_COOKIE, created.csrf, { secure, sameSite: "Strict", maxAge: 30 * 24 * 60 * 60 }));
-  return attachDeviceCookie(response, deviceId);
+  const created = await createSession(user.id, deviceId);
+  await getDb().transaction(async (tx) => {
+    await tx.update(users).set({ lastLoginAt: new Date(), updatedAt: new Date() }).where(eq(users.id, user.id));
+    if (user.role === "admin") await tx.insert(auditEvents).values({ actorId: user.id, action: "admin.login", entityType: "user", entityId: user.id });
+  });
+  return attachSessionCookies(json({ user: publicUser({ ...user, username: user.username }), csrfToken: created.csrf }), created, deviceId);
 });

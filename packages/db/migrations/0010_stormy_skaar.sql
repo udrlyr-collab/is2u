@@ -1,0 +1,2 @@
+ALTER TABLE "login_attempts" ADD COLUMN "identifier_hash" varchar(64);--> statement-breakpoint
+CREATE INDEX "login_attempts_identifier_idx" ON "login_attempts" USING btree ("identifier_hash","created_at");

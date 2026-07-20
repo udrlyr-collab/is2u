@@ -21,13 +21,16 @@
     "db:seed": "tsx packages/db/src/seed.ts",
     "backup:now": "tsx scripts/backup-now.ts",
     "pin:hash": "tsx scripts/hash-pin.ts",
-    "cleanup:future-missions": "tsx scripts/cleanup-future-missions.ts"
+    "cleanup:future-missions": "tsx scripts/cleanup-future-missions.ts",
+    "account:migration-report": "tsx scripts/account-migration-report.ts",
+    "admin:provision": "tsx scripts/provision-admin.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1086.0",
     "@aws-sdk/s3-request-presigner": "3.1086.0",
     "argon2": "0.44.0",
     "drizzle-orm": "0.45.2",
+    "html-to-image": "1.11.13",
     "luxon": "3.7.2",
     "next": "16.2.10",
     "pg-boss": "12.26.0",

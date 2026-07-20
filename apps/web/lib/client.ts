@@ -4,6 +4,13 @@ export function readBrowserCookie(name: string): string | null {
   return found ? decodeURIComponent(found.slice(name.length + 1)) : null;
 }
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
@@ -14,6 +21,6 @@ export async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<
   }
   const response = await fetch(url, { ...init, headers, credentials: "same-origin", cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? "요청을 완료하지 못했어요");
+  if (!response.ok) throw new ApiError(response.status, payload.error ?? "요청을 완료하지 못했어요");
   return payload as T;
 }

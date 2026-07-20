@@ -18,7 +18,9 @@ sudo install -m 0640 -o ubuntu -g docker /tmp/is2u-server.env /opt/is2u/shared/.
 cd /opt/is2u/releases/`$release/infra
 export IS2U_RELEASE=`$release
 export IS2U_ENV_FILE=/opt/is2u/shared/.env
-docker compose --env-file /opt/is2u/shared/.env build
+docker compose --env-file /opt/is2u/shared/.env build web
+docker compose --env-file /opt/is2u/shared/.env build worker
+docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm account:migration-report
 docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm backup:now
 docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm db:migrate
 docker compose --env-file /opt/is2u/shared/.env run --rm worker pnpm db:seed
