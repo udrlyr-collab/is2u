@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Field, InlineNotice, Input, Textarea } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
 import { DetailBackLink, DetailTopline } from "../../../components/detail-topline";
@@ -242,7 +242,7 @@ export function BoardView({ boardId }: { boardId: string }) {
   const [threads, setThreads] = useState<BoardThread[]>([]);
   const [assetOverrides, setAssetOverrides] = useState<Record<string, string>>({});
   const [viewport, setViewport] = useState<BoardViewport>({ x: 0, y: 0, scale: 1 });
-  const [fitScale, setFitScale] = useState(0.6);
+  const [fitScale, setFitScale] = useState(0);
   const [viewportSize, setViewportSize] = useState({ width: 1, height: 1 });
   const [editMode, setEditMode] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -272,6 +272,7 @@ export function BoardView({ boardId }: { boardId: string }) {
   const safariGesture = useRef<{ initialScale: number } | null>(null);
   const safariGestureActions = useRef<{ zoom: (scale: number, clientX: number, clientY: number) => void; commit: () => void } | null>(null);
   const pendingTransform = useRef<BoardItem | null>(null);
+  const pendingThreadCurve = useRef<BoardThread | null>(null);
   const loadedOnce = useRef(false);
   const threadDragOrigin = useRef<{ thread: BoardThread; items: Map<string, BoardItem> } | null>(null);
   function saveItem(next: BoardItem) { saveItems([next]); }
@@ -323,43 +324,53 @@ export function BoardView({ boardId }: { boardId: string }) {
   const domUpdateFrame = useRef<number | null>(null);
   const nextCanvasTransform = useRef<string | null>(null);
   const nextItemTransforms = useRef<Map<string, string>>(new Map());
+  const nextItemGeometry = useRef<Map<string, Pick<BoardItem, "x" | "y" | "width" | "height" | "rotationTenths">>>(new Map());
   const nextThreadPaths = useRef<Map<string, Array<{ selector: string; d: string }>>>(new Map());
+
+  function flushDOMUpdate() {
+    if (domUpdateFrame.current !== null) cancelAnimationFrame(domUpdateFrame.current);
+    domUpdateFrame.current = null;
+    updateQueued.current = false;
+    const element = viewportElement.current;
+    if (!element) return;
+    const canvas = element.querySelector(".board-canvas-fixed") as HTMLElement;
+
+    if (nextCanvasTransform.current && canvas) {
+      canvas.style.transform = nextCanvasTransform.current;
+      nextCanvasTransform.current = null;
+    }
+
+    nextItemGeometry.current.forEach((geometry, id) => {
+      const itemElement = element.querySelector<HTMLElement>(`[data-item-id="${id}"]`);
+      if (!itemElement) return;
+      itemElement.style.left = `${geometry.x}px`;
+      itemElement.style.top = `${geometry.y}px`;
+      itemElement.style.width = `${geometry.width}px`;
+      itemElement.style.height = `${geometry.height}px`;
+      itemElement.style.transform = `rotate(${geometry.rotationTenths / 10}deg)`;
+    });
+    nextItemGeometry.current.clear();
+
+    nextItemTransforms.current.forEach((transform, id) => {
+      const itemEl = element.querySelector(`[data-item-id="${id}"]`) as HTMLElement;
+      if (itemEl) itemEl.style.transform = transform;
+    });
+    nextItemTransforms.current.clear();
+
+    nextThreadPaths.current.forEach((paths) => {
+      paths.forEach(({ selector, d }) => {
+        element.querySelectorAll(selector).forEach((pathElement) => pathElement.setAttribute("d", d));
+      });
+    });
+    nextThreadPaths.current.clear();
+  }
 
   function requestDOMUpdate() {
     if (updateQueued.current) return;
     updateQueued.current = true;
     domUpdateFrame.current = requestAnimationFrame(() => {
       domUpdateFrame.current = null;
-      updateQueued.current = false;
-      const element = viewportElement.current;
-      if (!element) return;
-      const canvas = element.querySelector(".board-canvas-fixed") as HTMLElement;
-      
-      // 1. Update canvas transform
-      if (nextCanvasTransform.current && canvas) {
-        canvas.style.transform = nextCanvasTransform.current;
-        nextCanvasTransform.current = null;
-      }
-
-      // 2. Update item transforms
-      nextItemTransforms.current.forEach((transform, id) => {
-        const itemEl = element.querySelector(`[data-item-id="${id}"]`) as HTMLElement;
-        if (itemEl) {
-          itemEl.style.transform = transform;
-        }
-      });
-      nextItemTransforms.current.clear();
-
-      // 3. Update thread paths
-      nextThreadPaths.current.forEach((paths) => {
-        paths.forEach(({ selector, d }) => {
-          const pathElements = element.querySelectorAll(selector);
-          pathElements?.forEach((el) => {
-            el.setAttribute("d", d);
-          });
-        });
-      });
-      nextThreadPaths.current.clear();
+      flushDOMUpdate();
     });
   }
 
@@ -369,6 +380,7 @@ export function BoardView({ boardId }: { boardId: string }) {
     updateQueued.current = false;
     nextCanvasTransform.current = null;
     nextItemTransforms.current.clear();
+    nextItemGeometry.current.clear();
     nextThreadPaths.current.clear();
   }
 
@@ -505,6 +517,24 @@ export function BoardView({ boardId }: { boardId: string }) {
     });
   }
 
+  function previewBoardItemsDOM(previewItems: BoardItem[], previewThreads = threads) {
+    const previewMap = new Map(itemMap);
+    const previewIds = new Set(previewItems.map((item) => item.id));
+    previewItems.forEach((item) => {
+      previewMap.set(item.id, item);
+      nextItemGeometry.current.set(item.id, item);
+    });
+
+    previewThreads.filter((thread) => thread.itemIds.some((id) => previewIds.has(id))).forEach((thread) => {
+      const paths = thread.mode === "linking" ? linkingPaths(thread, previewMap) : [hangingPath(thread)];
+      nextThreadPaths.current.set(thread.id, paths.flatMap((d, index) => [
+        { selector: `[data-thread-id="${thread.id}"] .rope-shadow[data-segment-index="${index}"]`, d },
+        { selector: `[data-thread-id="${thread.id}"] .rope-cord[data-segment-index="${index}"]`, d },
+      ]));
+    });
+    requestDOMUpdate();
+  }
+
   function dragItemsDOM(
     ids: string[], 
     logicalDx: number, 
@@ -557,20 +587,32 @@ export function BoardView({ boardId }: { boardId: string }) {
     } catch { setPayload(null); setMessage("보드를 펼칠 수 없어요"); }
   }, [boardId]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = viewportElement.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const width = entry.contentRect.width;
-      const height = entry.contentRect.height;
+    const syncSize = (width: number, height: number) => {
       const nextSize = { width, height };
       const nextFitScale = Math.min(width / BOARD_WIDTH, height / BOARD_HEIGHT) * 0.94;
+      const current = viewportRef.current;
+      const actual = nextFitScale * current.scale;
+      const baseX = (width - BOARD_WIDTH * actual) / 2;
+      const baseY = (height - BOARD_HEIGHT * actual) / 2;
+      const nextViewport = {
+        x: BOARD_WIDTH * actual <= width ? 0 : Math.round(Math.min(-baseX, Math.max(width - BOARD_WIDTH * actual - baseX, current.x))),
+        y: BOARD_HEIGHT * actual <= height ? 0 : Math.round(Math.min(-baseY, Math.max(height - BOARD_HEIGHT * actual - baseY, current.y))),
+        scale: current.scale,
+      };
 
       viewportSizeRef.current = nextSize;
       fitScaleRef.current = nextFitScale;
+      viewportRef.current = nextViewport;
       setViewportSize(nextSize);
       setFitScale(nextFitScale);
-    });
+      setViewport((previous) => previous.x === nextViewport.x && previous.y === nextViewport.y && previous.scale === nextViewport.scale ? previous : nextViewport);
+    };
+    const rect = element.getBoundingClientRect();
+    syncSize(rect.width, rect.height);
+    const observer = new ResizeObserver(([entry]) => syncSize(entry.contentRect.width, entry.contentRect.height));
     observer.observe(element);
     return () => observer.disconnect();
   }, [payload?.board?.id]);
@@ -1169,8 +1211,8 @@ export function BoardView({ boardId }: { boardId: string }) {
     else setSelectedItemIds([id]);
   }
   function transformSelected(change: Partial<BoardItem>) { if (!selectedItem) return; const next = { ...selectedItem, ...change }; pendingTransform.current = null; updateLocal(next); void saveItem(next); }
-  function previewSelected(change: Partial<BoardItem>) { if (!selectedItem) return; const next = { ...selectedItem, ...change }; pendingTransform.current = next; updateLocal(next); }
-  function commitSelectedPreview() { const next = pendingTransform.current; if (!next) return; pendingTransform.current = null; void saveItem(next); }
+  function previewSelected(change: Partial<BoardItem>) { if (!selectedItem) return; const next = { ...selectedItem, ...change }; pendingTransform.current = next; previewBoardItemsDOM([next]); }
+  function commitSelectedPreview() { const next = pendingTransform.current; if (!next) return; pendingTransform.current = null; previewBoardItemsDOM([next]); flushDOMUpdate(); updateLocal(next); void saveItem(next); }
   function hangingThreadForItem(id: string) { return threads.find((thread) => thread.mode === "hanging" && thread.itemIds.includes(id)) ?? null; }
   function resizeItem(item: BoardItem, width: number, height: number, done: boolean) {
     const next = { ...item, width, height };
@@ -1179,14 +1221,14 @@ export function BoardView({ boardId }: { boardId: string }) {
       const updatedMap = new Map(itemMap);
       updatedMap.set(item.id, next);
       const arranged = hangingLayout(hanging, updatedMap);
-      updateLocals(arranged);
-      if (done) void saveItems(arranged);
+      previewBoardItemsDOM(arranged);
+      if (done) { flushDOMUpdate(); updateLocals(arranged); void saveItems(arranged); }
     } else {
-      updateLocal(next);
-      if (done) void saveItem(next);
+      previewBoardItemsDOM([next]);
+      if (done) { flushDOMUpdate(); updateLocal(next); void saveItem(next); }
     }
   }
-  function rotateItem(item: BoardItem, rotationTenths: number, done: boolean) { const next = { ...item, rotationTenths }; updateLocal(next); if (done) void saveItem(next); }
+  function rotateItem(item: BoardItem, rotationTenths: number, done: boolean) { const next = { ...item, rotationTenths }; previewBoardItemsDOM([next]); if (done) { flushDOMUpdate(); updateLocal(next); void saveItem(next); } }
   function keyboardMove(item: BoardItem, dx: number, dy: number) {
     const targets = selectedItemIds.length > 1 && selectedItemIds.includes(item.id) ? selectedItemIds.map((id) => itemMap.get(id)).filter((value): value is BoardItem => Boolean(value)) : [item];
     const bounded = boundedGroupDelta(targets, dx, dy); const moved = targets.map((target) => ({ ...target, x: target.x + bounded.dx, y: target.y + bounded.dy })); updateLocals(moved); void saveItems(moved);
@@ -1216,7 +1258,24 @@ export function BoardView({ boardId }: { boardId: string }) {
     } catch { setMessage("실을 걸지 못했어요"); }
   }
   type ThreadChange = Partial<Pick<BoardThread, "color" | "curve" | "itemIds" | "mode" | "startX" | "startY" | "endX" | "endY">>;
-  function previewThread(thread: BoardThread) { setThreads((current) => current.map((value) => value.id === thread.id ? thread : value)); if (thread.mode === "hanging") updateLocals(hangingLayout(thread, itemMap)); }
+  function previewThread(thread: BoardThread) {
+    const previewThreads = threads.map((value) => value.id === thread.id ? thread : value);
+    const previewItems = thread.mode === "hanging"
+      ? hangingLayout(thread, itemMap)
+      : thread.itemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+    previewBoardItemsDOM(previewItems, previewThreads);
+  }
+  function previewThreadCurve(thread: BoardThread) {
+    pendingThreadCurve.current = thread;
+    previewThread(thread);
+  }
+  function commitThreadCurvePreview() {
+    const next = pendingThreadCurve.current;
+    if (!next) return;
+    pendingThreadCurve.current = null;
+    flushDOMUpdate();
+    void updateThread({ curve: next.curve }, next);
+  }
   async function updateThread(change: ThreadChange, base = selectedThread) {
     if (!base) return;
     try {
@@ -1239,9 +1298,16 @@ export function BoardView({ boardId }: { boardId: string }) {
       endX: part === "start" ? origin.endX : Math.round(clampNumber(origin.endX + translated.x, 0, BOARD_WIDTH)),
       endY: part === "start" ? origin.endY : Math.round(clampNumber(origin.endY + translated.y, 0, BOARD_HEIGHT)),
     };
-    setThreads((current) => current.map((value) => value.id === next.id ? next : value));
-    const arranged = hangingLayout(next, threadDragOrigin.current.items); updateLocals(arranged);
-    if (done) { threadDragOrigin.current = null; void updateThread({ startX: next.startX, startY: next.startY, endX: next.endX, endY: next.endY }, next); }
+    const previewThreads = threads.map((value) => value.id === next.id ? next : value);
+    const arranged = hangingLayout(next, threadDragOrigin.current.items);
+    previewBoardItemsDOM(arranged, previewThreads);
+    if (done) {
+      flushDOMUpdate();
+      threadDragOrigin.current = null;
+      setThreads(previewThreads);
+      updateLocals(arranged);
+      void updateThread({ startX: next.startX, startY: next.startY, endX: next.endX, endY: next.endY }, next);
+    }
   }
   async function removeThreadMember(id: string) {
     if (!selectedThread) return; const nextIds = selectedThread.itemIds.filter((value) => value !== id);
@@ -1378,14 +1444,14 @@ export function BoardView({ boardId }: { boardId: string }) {
       </div>
     </header>
     <div className="board-status-line"><span>{editMode ? "꾸미기 모드" : "보기 모드"}</span><small aria-live="polite">{message || (saveState === "saving" ? "저장 중…" : saveState === "saved" ? "보드를 저장했어요" : saveState === "error" ? "저장하지 못했어요" : "")}</small></div>
-    <div className={`board-workspace${payload.canEdit ? " can-decorate" : ""}${editMode && panelOpen ? " has-toolbox" : ""}`}>
+    <div className={`board-workspace${editMode && panelOpen ? " has-toolbox" : ""}`}>
       <div ref={viewportElement} className="board-viewport-fixed" onPointerDown={startCanvas} onPointerMove={moveCanvas} onPointerUp={endCanvas} onPointerCancel={cancelCanvas} onLostPointerCapture={cancelCanvas} onDoubleClick={(event) => zoomAt(viewport.scale < 1.5 ? 1.6 : 1, event.clientX, event.clientY)}>
         <div className="board-canvas-fixed" style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT, transform: `translate(${transformBase.x + viewport.x}px, ${transformBase.y + viewport.y}px) scale(${effectiveScale})` }}><BoardArtwork items={items} threads={threads} assetOverrides={assetOverrides} mode={editMode ? "edit" : "view"} scale={effectiveScale} selectedItemIds={selectedItemIds} selectedThreadId={selectedThreadId} onItemSelect={chooseItem} onItemOpen={(item) => item.memoryId && openMemory(item.memoryId)} onBundleOpen={openBundle} onThreadSelect={(id) => { setSelectedThreadId(id); setSelectedItemIds([]); setPanelOpen(true); sheetRef.current?.openToMiddle(); }} onItemResize={resizeItem} onItemRotate={rotateItem} onThreadDrag={moveThread} onKeyboardMove={keyboardMove} /></div>
         {openGroup && <BundleSpread group={openGroup} isClosing={bundleClosing} onClose={closeBundle} onOpenDetail={openMemory} />}
         <div className="board-zoom-controls" aria-label="보드 확대"><button type="button" aria-label="축소" onClick={() => zoomAt(viewport.scale / 1.15)}>−</button><span>{Math.round(viewport.scale * 100)}%</span><button type="button" aria-label="확대" onClick={() => zoomAt(viewport.scale * 1.15)}>+</button><button type="button" onClick={() => { const next = { x: 0, y: 0, scale: 1 }; setView(next); saveViewport(next); }}>전체 보기</button></div>
       </div>
-      {payload.canEdit && <div className="board-toolbox-slot">
-      {editMode && panelOpen && <BoardBottomSheet ref={sheetRef} className={`board-bottom-sheet desktop-toolbox context-${contextMode}`} title={toolboxTitle} headerAction={
+      {payload.canEdit && editMode && panelOpen && <div className="board-toolbox-slot">
+      <BoardBottomSheet ref={sheetRef} className={`board-bottom-sheet desktop-toolbox context-${contextMode}`} title={toolboxTitle} headerAction={
           <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); setSelectedThreadId(null); }}>
             <span>여러 장 고르기</span>
           </button>
@@ -1401,7 +1467,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         {contextMode === "multi" && <div className="tool-section-stack"><ol className="selected-piece-list">{selectedItemIds.map((id, index) => { const item = itemMap.get(id); return item ? <li key={id}><span>{index + 1}</span>{shortPaperLabel(item)}</li> : null; })}</ol><div className="thread-mode-actions"><button type="button" onClick={() => void createThread("hanging")}><i aria-hidden="true">⌁</i><strong>실에 매달기</strong><span>빨래집게로 걸어요</span></button><button type="button" onClick={() => void createThread("linking")}><i aria-hidden="true">↝</i><strong>실로 연결하기</strong><span>지금 자리에서 이어요</span></button></div></div>}
         {(contextMode === "single" || contextMode === "note") && selectedItem && <div className="tool-section-stack">
           {selectedItem.elementType === "image" && selectedItem.asset?.originalFilename && <span className="tool-file-helper" title={selectedItem.asset.originalFilename}>파일: {selectedItem.asset.originalFilename.length > 25 ? `${selectedItem.asset.originalFilename.slice(0, 24)}…` : selectedItem.asset.originalFilename}</span>}
-          <div className="compact-adjuster"><span>크기</span><button type="button" aria-label="작게" onClick={() => transformSelected({ width: Math.max(80, selectedItem.width - 24), height: Math.max(60, Math.round(selectedItem.height * Math.max(80, selectedItem.width - 24) / selectedItem.width)) })}>−</button><input aria-label="크기" type="range" min="80" max="720" value={selectedItem.width} onChange={(event) => { const width = Number(event.target.value); previewSelected({ width, height: Math.min(620, Math.max(60, Math.round(selectedItem.height * width / selectedItem.width))) }); }} onPointerUp={commitSelectedPreview} onPointerCancel={commitSelectedPreview} onKeyUp={commitSelectedPreview} onBlur={commitSelectedPreview} /><button type="button" aria-label="크게" onClick={() => transformSelected({ width: Math.min(720, selectedItem.width + 24), height: Math.min(620, Math.round(selectedItem.height * Math.min(720, selectedItem.width + 24) / selectedItem.width)) })}>＋</button></div>
+          <div className="compact-adjuster"><span>크기</span><button type="button" aria-label="작게" onClick={() => transformSelected({ width: Math.max(80, selectedItem.width - 24), height: Math.max(60, Math.round(selectedItem.height * Math.max(80, selectedItem.width - 24) / selectedItem.width)) })}>−</button><input key={`${selectedItem.id}-${selectedItem.width}`} aria-label="크기" type="range" min="80" max="720" defaultValue={selectedItem.width} onInput={(event) => { const width = Number(event.currentTarget.value); previewSelected({ width, height: Math.min(620, Math.max(60, Math.round(selectedItem.height * width / selectedItem.width))) }); }} onPointerUp={commitSelectedPreview} onPointerCancel={commitSelectedPreview} onKeyUp={commitSelectedPreview} onBlur={commitSelectedPreview} /><button type="button" aria-label="크게" onClick={() => transformSelected({ width: Math.min(720, selectedItem.width + 24), height: Math.min(620, Math.round(selectedItem.height * Math.min(720, selectedItem.width + 24) / selectedItem.width)) })}>＋</button></div>
           <div className="compact-adjuster"><span>기울기</span><button type="button" aria-label="왼쪽으로 기울이기" onClick={() => transformSelected({ rotationTenths: Math.max(-120, selectedItem.rotationTenths - 10) })}>↶</button><button type="button" onClick={() => transformSelected({ rotationTenths: 0 })}>바로 놓기</button><button type="button" aria-label="오른쪽으로 기울이기" onClick={() => transformSelected({ rotationTenths: Math.min(120, selectedItem.rotationTenths + 10) })}>↷</button></div>
           <div className="paper-choice-row"><button type="button" onClick={() => transformSelected({ zIndex: maxZ + 1 })}>앞으로</button><button type="button" onClick={() => transformSelected({ zIndex: 1 })}>뒤로</button></div>
           {contextMode === "note" && selectedPaperStyle && <>
@@ -1415,8 +1481,8 @@ export function BoardView({ boardId }: { boardId: string }) {
           {selectedHangingThread ? <button type="button" onClick={() => void removeThreadMember(selectedItem.id)}>실에서 분리하기</button> : <><span className="tool-field-label">붙이는 방법</span><div className="paper-choice-row">{[{ id: "pin", label: "압정" }, { id: "tape", label: "테이프" }, { id: "none", label: "그대로" }].map((option) => <button key={option.id} type="button" aria-pressed={selectedItem.styleJson.attachment === option.id} onClick={() => transformSelected({ styleJson: { ...selectedItem.styleJson, attachment: option.id } })}>{option.label}</button>)}</div></>}
           <button type="button" className="danger paper-detach" onClick={() => setConfirmDetach(selectedItem.id)}>보드에서 떼기</button>
         </div>}
-        {contextMode === "thread" && selectedThread && <div className="tool-section-stack"><span className="thread-mode-label">{selectedThread.mode === "hanging" ? "실에 매단 추억" : "실로 이은 추억"}</span><span className="tool-field-label">실 색</span><div className="thread-swatch-list" role="radiogroup" aria-label="실 색">{THREAD_COLORS.map((color) => { const isSelected = selectedThread.color === color.id || (color.id === "warm-brown" && ["beige", "brown", "yellow", "muted-red"].includes(selectedThread.color)); return <button key={color.id} type="button" role="radio" aria-checked={isSelected} className={`thread-swatch-item${isSelected ? " is-selected" : ""}`} onClick={() => void updateThread({ color: color.id })}><div className="thread-swatch-paper"><svg width="100%" height="24" viewBox="0 0 100 20" preserveAspectRatio="none" className="thread-preview-svg"><path d="M 5 6 Q 50 16 95 6" fill="none" stroke="rgba(70, 50, 40, 0.15)" strokeWidth="4" strokeLinecap="round" /><path d="M 5 4 Q 50 14 95 4" fill="none" stroke={color.value} strokeWidth="4" strokeLinecap="round" strokeDasharray="3 1.5" /></svg>{isSelected && <span className="swatch-clothespin" aria-hidden="true" />}</div><span className="thread-swatch-label">{color.label}</span></button>; })}</div><span className="tool-field-label">실 처짐</span><div className="thread-curve-controls"><button onClick={() => void updateThread({ curve: Math.max(-160, selectedThread.curve - 16) })}>팽팽하게</button><input aria-label="실 처짐" type="range" min="-160" max="160" value={selectedThread.curve} onChange={(event) => previewThread({ ...selectedThread, curve: Number(event.target.value) })} onPointerUp={(event) => void updateThread({ curve: Number(event.currentTarget.value) }, { ...selectedThread, curve: Number(event.currentTarget.value) })} onKeyUp={(event) => void updateThread({ curve: Number(event.currentTarget.value) }, { ...selectedThread, curve: Number(event.currentTarget.value) })} /><button onClick={() => void updateThread({ curve: Math.min(160, selectedThread.curve + 16) })}>더 늘어지게</button></div><span className="tool-field-label">연결 순서</span><ThreadMemberOrder thread={selectedThread} itemMap={itemMap} onPreview={(ids) => previewThread({ ...selectedThread, itemIds: ids })} onCommit={(ids) => void updateThread({ itemIds: ids }, { ...selectedThread, itemIds: ids })} onDetach={(id) => void removeThreadMember(id)} /><button type="button" className="danger paper-detach" onClick={() => void deleteThread()}>실 연결 해제</button></div>}
-      </BoardBottomSheet>}
+        {contextMode === "thread" && selectedThread && <div className="tool-section-stack"><span className="thread-mode-label">{selectedThread.mode === "hanging" ? "실에 매단 추억" : "실로 이은 추억"}</span><span className="tool-field-label">실 색</span><div className="thread-swatch-list" role="radiogroup" aria-label="실 색">{THREAD_COLORS.map((color) => { const isSelected = selectedThread.color === color.id || (color.id === "warm-brown" && ["beige", "brown", "yellow", "muted-red"].includes(selectedThread.color)); return <button key={color.id} type="button" role="radio" aria-checked={isSelected} className={`thread-swatch-item${isSelected ? " is-selected" : ""}`} onClick={() => void updateThread({ color: color.id })}><div className="thread-swatch-paper"><svg width="100%" height="24" viewBox="0 0 100 20" preserveAspectRatio="none" className="thread-preview-svg"><path d="M 5 6 Q 50 16 95 6" fill="none" stroke="rgba(70, 50, 40, 0.15)" strokeWidth="4" strokeLinecap="round" /><path d="M 5 4 Q 50 14 95 4" fill="none" stroke={color.value} strokeWidth="4" strokeLinecap="round" strokeDasharray="3 1.5" /></svg>{isSelected && <span className="swatch-clothespin" aria-hidden="true" />}</div><span className="thread-swatch-label">{color.label}</span></button>; })}</div><span className="tool-field-label">실 처짐</span><div className="thread-curve-controls"><button onClick={() => void updateThread({ curve: Math.max(-160, selectedThread.curve - 16) })}>팽팽하게</button><input key={`${selectedThread.id}-${selectedThread.curve}`} aria-label="실 처짐" type="range" min="-160" max="160" defaultValue={selectedThread.curve} onInput={(event) => previewThreadCurve({ ...selectedThread, curve: Number(event.currentTarget.value) })} onPointerUp={commitThreadCurvePreview} onPointerCancel={commitThreadCurvePreview} onKeyUp={commitThreadCurvePreview} onBlur={commitThreadCurvePreview} /><button onClick={() => void updateThread({ curve: Math.min(160, selectedThread.curve + 16) })}>더 늘어지게</button></div><span className="tool-field-label">연결 순서</span><ThreadMemberOrder thread={selectedThread} itemMap={itemMap} onPreview={(ids) => previewThread({ ...selectedThread, itemIds: ids })} onCommit={(ids) => void updateThread({ itemIds: ids }, { ...selectedThread, itemIds: ids })} onDetach={(id) => void removeThreadMember(id)} /><button type="button" className="danger paper-detach" onClick={() => void deleteThread()}>실 연결 해제</button></div>}
+      </BoardBottomSheet>
       </div>}
     </div>
     {shareOpen && (

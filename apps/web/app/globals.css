@@ -1028,10 +1028,6 @@ h3 { margin-bottom: var(--space-2); }
   .mission-slips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-@media (min-width: 621px) {
-  .memory-board-screen.is-editing .board-zoom-controls { right: 23rem; }
-}
-
 @media (min-width: 740px) {
   .app-shell { padding-bottom: 7rem; }
   .appointment-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1283,8 +1279,6 @@ h3 { margin-bottom: var(--space-2); }
 }
 
 @media (max-width: 739px), (max-height: 500px) and (pointer: coarse) {
-  .board-toolbox { top: auto; right: 0.55rem; bottom: calc(5.5rem + env(safe-area-inset-bottom)); left: 0.55rem; width: auto; height: var(--sheet-expanded-height); max-height: none; grid-template-rows: 44px 52px minmax(0, 1fr); border-radius: 13px 13px 5px 5px; transform: translateY(var(--sheet-translate)); clip-path: inset(0 0 var(--sheet-translate) 0); transition: transform 190ms ease-out, clip-path 190ms ease-out; will-change: transform, clip-path; contain: layout paint; }
-  .board-toolbox[data-sheet-dragging="true"] { transition: none; }
   .board-sheet-grab-zone { display: grid; min-height: 44px; place-items: center; border: 0; background: transparent; touch-action: none; cursor: ns-resize; }
   .board-sheet-grab-zone i { width: 42px; height: 4px; border-radius: 3px; background: rgb(123 109 100 / 0.48); box-shadow: 0 1px 0 rgb(255 255 255 / 0.5); }
   .board-sheet-grab-zone:active i { transform: translateY(1px); background: rgb(96 68 51 / 0.58); }
@@ -1299,7 +1293,7 @@ h3 { margin-bottom: var(--space-2); }
   }
   .sheet-accessible-actions:focus-within { opacity: 1; pointer-events: auto; }
   .sheet-accessible-actions button { min-width: 44px; min-height: 40px; font-size: 0.64rem; }
-  .board-toolbox.sheet-collapsed .board-tool-content { opacity: 0; pointer-events: none; }
+  .board-toolbox.sheet-collapsed .board-tool-content { visibility: hidden; opacity: 0; pointer-events: none; }
   .board-toolbox > header { min-height: 52px; }
   .board-tool-content { padding-bottom: calc(0.85rem + env(safe-area-inset-bottom)); }
   .thread-mode-actions { grid-template-columns: 1fr; }
@@ -1723,17 +1717,6 @@ h3 { margin-bottom: var(--space-2); }
   font-family: var(--font-body);
 }
 
-@media (max-width: 739px) {
-  .board-toolbox {
-    position: fixed;
-    top: auto;
-    right: 0.55rem;
-    bottom: calc(5.5rem + env(safe-area-inset-bottom));
-    left: 0.55rem;
-    width: auto;
-  }
-}
-
 /* Board detail uses one capturable artwork and a stable decorating rail. */
 .detail-topline {
   min-width: 0;
@@ -1751,7 +1734,6 @@ h3 { margin-bottom: var(--space-2); }
 .app-shell:has(> .board-detail-page) { max-width: 104rem; }
 .board-detail-page { max-width: 104rem; }
 
-.board-workspace.can-decorate { grid-template-columns: minmax(0, 1fr); }
 .board-toolbox-slot { min-width: 0; width: 100%; }
 .board-workspace .board-viewport-fixed { width: 100%; min-width: 0; }
 
@@ -1838,17 +1820,65 @@ h3 { margin-bottom: var(--space-2); }
 .thread-curve-controls button:active,
 .tool-section-stack > button:active { transform: translateY(1px); box-shadow: inset 1px 2px 0 rgb(70 50 40 / 0.1); }
 
-@media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (min-height: 501px) {
-  .board-workspace.can-decorate { grid-template-columns: minmax(0, 1fr) 340px; gap: 1.5rem; align-items: start; }
-  .board-toolbox-slot { width: 340px; min-height: 1px; }
-  .board-bottom-sheet.desktop-toolbox { position: sticky; top: 0.75rem; right: auto; bottom: auto; left: auto; width: 340px; height: clamp(32rem, 72dvh, 58rem); max-height: none; margin: 0; transform: none; clip-path: none; grid-template-rows: auto minmax(0, 1fr); }
+@media (min-width: 740px) and (min-height: 501px) {
+  .board-workspace.has-toolbox { grid-template-columns: minmax(0, 1fr) clamp(280px, 36vw, 340px); gap: clamp(1rem, 2vw, 1.5rem); align-items: start; }
+  .board-toolbox-slot { width: clamp(280px, 36vw, 340px); min-height: 1px; }
+  .board-bottom-sheet.desktop-toolbox { position: sticky; top: 0.75rem; right: auto; bottom: auto; left: auto; width: 100%; height: clamp(32rem, 72dvh, 58rem); max-height: none; margin: 0; transform: none; clip-path: none; animation: none; grid-template-rows: auto minmax(0, 1fr); }
   .board-bottom-sheet.desktop-toolbox .board-tool-content { overflow-y: auto; opacity: 1; pointer-events: auto; }
 }
 
-@media (max-width: 899px), (max-height: 500px) and (pointer: coarse) {
-  .board-workspace.can-decorate { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 739px), (max-height: 500px) and (pointer: coarse) {
+  .board-workspace.has-toolbox { grid-template-columns: minmax(0, 1fr); }
   .board-toolbox-slot { width: 100%; }
 }
+
+.board-sheet-viewport { display: contents; }
+
+@media (max-width: 739px), (max-height: 500px) and (pointer: coarse) {
+  .board-toolbox-slot { min-height: 0; }
+  .board-sheet-viewport {
+    position: fixed;
+    z-index: 90;
+    top: 0;
+    right: 0.55rem;
+    bottom: calc(5.5rem + env(safe-area-inset-bottom));
+    left: 0.55rem;
+    display: block;
+    overflow: hidden;
+    contain: layout paint;
+    pointer-events: none;
+  }
+  .board-bottom-sheet.desktop-toolbox {
+    position: absolute;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    height: var(--sheet-expanded-height);
+    max-height: none;
+    margin: 0;
+    grid-template-rows: 44px 52px minmax(0, 1fr);
+    transform: translate3d(0, var(--sheet-translate), 0);
+    clip-path: none;
+    contain: layout style;
+    animation: none;
+    transition: transform 190ms ease-out;
+    will-change: auto;
+    pointer-events: none;
+  }
+  .board-bottom-sheet.desktop-toolbox > header,
+  .board-bottom-sheet.desktop-toolbox > .board-tool-content,
+  .board-bottom-sheet.desktop-toolbox > .board-sheet-grab-zone { pointer-events: auto; }
+  .board-bottom-sheet.desktop-toolbox[data-sheet-ready="false"] { visibility: hidden; }
+  .board-bottom-sheet.desktop-toolbox[data-sheet-dragging="true"] {
+    transition: none;
+    will-change: transform;
+  }
+}
+
+.board-canvas-fixed { contain: layout style; will-change: auto; }
+.board-viewport-fixed:active .board-canvas-fixed { will-change: transform; }
 
 @media (max-width: 520px) {
   .detail-topline { gap: 0.4rem; max-width: 100%; }

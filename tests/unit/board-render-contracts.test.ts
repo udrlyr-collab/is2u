@@ -63,21 +63,42 @@ describe("board rendering contracts", () => {
     expect(exportPreparation).toContain("await waitForBoardCaptureReady(capture)");
   });
 
-  it("reserves a stable desktop toolbox slot without synthesizing board width", async () => {
+  it("uses the full viewer width until the desktop toolbox is actually open", async () => {
     const [view, styles] = await Promise.all([
       readFile(VIEW_PATH, "utf8"),
       readFile(STYLES_PATH, "utf8"),
     ]);
 
     expect(view).toContain("board-toolbox-slot");
-    expect(view).toContain("can-decorate");
+    expect(view).toContain("payload.canEdit && editMode && panelOpen && <div className=\"board-toolbox-slot\"");
+    expect(view).not.toContain("can-decorate");
     expect(view).not.toMatch(/rawWidth\s*\+\s*364/);
     expect(view).not.toMatch(/contentRect\.width\s*\+\s*364/);
-    expect(styles).toContain(".board-workspace.can-decorate");
-    expect(styles).toMatch(/\.board-workspace\.can-decorate\s*\{[^}]*grid-template-columns:/s);
+    expect(styles).not.toContain(".board-workspace.can-decorate");
+    expect(styles).not.toContain(".memory-board-screen.is-editing .board-zoom-controls");
+    expect(styles).toMatch(/\.board-workspace\.has-toolbox\s*\{[^}]*grid-template-columns:/s);
     expect(styles).toMatch(/\.board-toolbox-slot\s*\{/s);
     expect(styles).toMatch(/\.board-bottom-sheet\.desktop-toolbox\s*\{[^}]*position:\s*sticky/s);
-    expect(styles).toMatch(/@media\s*\(min-width:\s*900px\)\s*and\s*\(pointer:\s*fine\)/);
+    expect(styles).toMatch(/@media\s*\(min-width:\s*740px\)\s*and\s*\(min-height:\s*501px\)/);
+  });
+
+  it("previews board adjustments without rerendering the full artwork on every input", async () => {
+    const [view, renderer] = await Promise.all([
+      readFile(VIEW_PATH, "utf8"),
+      readFile(RENDERER_PATH, "utf8"),
+    ]);
+
+    expect(view).toContain("previewBoardItemsDOM");
+    expect(view).toContain("nextItemGeometry");
+    expect(view).toContain("flushDOMUpdate");
+    expect(view).toContain("pendingThreadCurve");
+    expect(view).toContain("onPointerCancel={commitThreadCurvePreview}");
+    expect(view).toContain("onBlur={commitThreadCurvePreview}");
+    expect(view).toContain("onInput={(event)");
+    expect(view).toContain("defaultValue={selectedItem.width}");
+    expect(renderer).toContain('const eager = mode === "export" || mode === "thumbnail" || eagerImages');
+    expect(renderer).toContain('const eager = mode === "export" || eagerImages');
+    expect(renderer).not.toContain('mode === "edit" || eagerImages');
   });
 
   it("keeps shadows and selection decoration on visual layers only", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { hangingPath, hangingPoint, itemCenter, linkingPaths } from "./board-geometry";
 import { normalizeBoardPieceStyle } from "../../../lib/board-style";
 import {
@@ -17,7 +17,7 @@ import {
 
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" });
 
-function BoardSurface() {
+const BoardSurface = memo(function BoardSurface() {
   const id = useId().replaceAll(":", "");
   const corkBase = `cork-base-${id}`;
   const corkShade = `cork-shade-${id}`;
@@ -67,9 +67,9 @@ function BoardSurface() {
     <rect x="30" y="30" width={BOARD_WIDTH - 60} height={BOARD_HEIGHT - 60} fill="none" stroke="#6f452d" strokeWidth="8" opacity="0.32" />
     <rect x="38" y="38" width={BOARD_WIDTH - 76} height={BOARD_HEIGHT - 76} fill="none" stroke="#f1d39f" strokeWidth="4" opacity="0.18" />
   </svg>;
-}
+});
 
-function BoardFrameSurface() {
+const BoardFrameSurface = memo(function BoardFrameSurface() {
   const id = useId().replaceAll(":", "");
   const wood = `wood-${id}`;
   const grain = `grain-${id}`;
@@ -103,7 +103,7 @@ function BoardFrameSurface() {
     <rect x="31" y="31" width={BOARD_WIDTH - 62} height={BOARD_HEIGHT - 62} fill="none" stroke="#4b3022" strokeWidth="6" opacity="0.7" />
     <rect x="37" y="37" width={BOARD_WIDTH - 74} height={BOARD_HEIGHT - 74} fill="none" stroke="#d5a97a" strokeWidth="3" opacity="0.42" />
   </svg>;
-}
+});
 
 export function BoardNotePaper({ shape = "note", textStyle = "default", children }: { shape?: string; textStyle?: string; children: ReactNode }) {
   return <div className={`board-free-note shape-${shape} text-${textStyle}`}><p>{children}</p></div>;
@@ -240,7 +240,7 @@ function BoardPiece({ item, url, mode = "view", selected = false, multiSelected 
 
   const editMode = mode === "edit";
   const isDecorative = mode === "thumbnail" || mode === "export" || decorative;
-  const eager = mode === "export" || mode === "edit" || mode === "thumbnail" || eagerImages;
+  const eager = mode === "export" || mode === "thumbnail" || eagerImages;
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (editMode && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
@@ -327,7 +327,7 @@ export function BoardArtwork({ items, threads, className = "", assetOverrides = 
   const clippedIds = new Set(threads.filter((thread) => thread.mode === "hanging").flatMap((thread) => thread.itemIds));
   const isEdit = mode === "edit";
   const isDecorative = mode === "thumbnail" || mode === "export";
-  const eager = mode === "export" || mode === "edit" || eagerImages;
+  const eager = mode === "export" || eagerImages;
 
   return <div className={`board-artwork ${className}`} style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT }}>
     <BoardSurface />
