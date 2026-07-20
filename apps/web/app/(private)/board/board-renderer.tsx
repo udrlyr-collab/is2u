@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { hangingPath, hangingPoint, itemCenter, linkingPaths } from "./board-geometry";
+import { hangingPath, linkingPaths, threadControlPoint } from "./board-geometry";
 import { BOARD_STICKERS, normalizeBoardPieceStyle } from "../../../lib/board-style";
 import { StickerGraphic } from "./board-sticker-graphic";
 import {
@@ -300,9 +300,16 @@ function BoardPiece({ item, url, mode = "view", selected = false, multiSelected 
 }
 
 type ThreadDragPart = "start" | "end" | "whole";
-function ThreadDragHandle({ thread, part, x, y, scale, onDrag }: { thread: BoardThread; part: ThreadDragPart; x: number; y: number; scale: number; onDrag?: (thread: BoardThread, part: ThreadDragPart, dx: number, dy: number, done: boolean) => void }) {
+type ThreadDragAction = (thread: BoardThread, part: ThreadDragPart, dx: number, dy: number, done: boolean, cancelled: boolean) => void;
+function ThreadDragHandle({ thread, part, x, y, scale, onDrag }: { thread: BoardThread; part: ThreadDragPart; x: number; y: number; scale: number; onDrag?: ThreadDragAction }) {
   const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
-  return <button type="button" className={`rope-direct-handle rope-handle-${part}`} aria-label={part === "start" ? "실 왼쪽 끝 옮기기" : part === "end" ? "실 오른쪽 끝 옮기기" : "실 전체 옮기기"} style={{ left: x, top: y, "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (pointer.current?.id !== event.pointerId) return; onDrag?.(thread, part, (event.clientX - pointer.current.x) / Math.max(scale, 0.01), (event.clientY - pointer.current.y) / Math.max(scale, 0.01), false); }} onPointerUp={(event) => { if (pointer.current?.id !== event.pointerId) return; const current = pointer.current; pointer.current = null; onDrag?.(thread, part, (event.clientX - current.x) / Math.max(scale, 0.01), (event.clientY - current.y) / Math.max(scale, 0.01), true); }} onPointerCancel={(event) => { if (pointer.current?.id !== event.pointerId) return; const current = pointer.current; pointer.current = null; onDrag?.(thread, part, (event.clientX - current.x) / Math.max(scale, 0.01), (event.clientY - current.y) / Math.max(scale, 0.01), true); }} />;
+  function finish(event: ReactPointerEvent<HTMLButtonElement>, cancelled: boolean) {
+    if (pointer.current?.id !== event.pointerId) return;
+    const current = pointer.current;
+    pointer.current = null;
+    onDrag?.(thread, part, (event.clientX - current.x) / Math.max(scale, 0.01), (event.clientY - current.y) / Math.max(scale, 0.01), true, cancelled);
+  }
+  return <button type="button" data-thread-control-id={thread.id} data-thread-part={part} className={`rope-direct-handle rope-handle-${part}`} aria-label={part === "start" ? "실 왼쪽 끝 옮기기" : part === "end" ? "실 오른쪽 끝 옮기기" : "실 전체 옮기기"} style={{ left: x, top: y, "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (pointer.current?.id !== event.pointerId) return; onDrag?.(thread, part, (event.clientX - pointer.current.x) / Math.max(scale, 0.01), (event.clientY - pointer.current.y) / Math.max(scale, 0.01), false, false); }} onPointerUp={(event) => finish(event, false)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={(event) => finish(event, true)} />;
 }
 
 type ArtworkProps = {
@@ -320,7 +327,7 @@ type ArtworkProps = {
   onThreadSelect?: (id: string) => void;
   onItemResize?: (item: BoardItem, width: number, height: number, done: boolean) => void;
   onItemRotate?: (item: BoardItem, rotationTenths: number, done: boolean) => void;
-  onThreadDrag?: (thread: BoardThread, part: ThreadDragPart, dx: number, dy: number, done: boolean) => void;
+  onThreadDrag?: ThreadDragAction;
   onKeyboardMove?: (item: BoardItem, dx: number, dy: number) => void;
   eagerImages?: boolean;
 };
@@ -336,12 +343,11 @@ export function BoardArtwork({ items, threads, className = "", assetOverrides = 
     <BoardSurface />
     <svg className="board-thread-layer" width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-label="추억을 잇는 실">{threads.map((thread) => {
       const paths = thread.mode === "linking" ? linkingPaths(thread, itemMap) : [hangingPath(thread)];
-      return <g key={thread.id} data-thread-id={thread.id} className={`rope rope-${thread.color} mode-${thread.mode}${selectedThreadId === thread.id ? " selected" : ""}`} onPointerDown={(event) => { if (!isEdit) return; event.preventDefault(); event.stopPropagation(); onThreadSelect?.(thread.id); }}>{paths.map((path, index) => <g key={index}><path className="rope-shadow" data-segment-index={index} d={path} /><path className="rope-cord" data-segment-index={index} d={path} /></g>)}{thread.mode === "hanging" && <><circle cx={thread.startX} cy={thread.startY} r="9" /><circle cx={thread.endX} cy={thread.endY} r="9" /></>}</g>;
+      return <g key={thread.id} data-thread-id={thread.id} className={`rope rope-${thread.color} mode-${thread.mode}${selectedThreadId === thread.id ? " selected" : ""}`} onPointerDown={(event) => { if (!isEdit) return; event.preventDefault(); event.stopPropagation(); onThreadSelect?.(thread.id); }}>{paths.map((path, index) => <g key={index}><path className="rope-shadow" data-segment-index={index} d={path} /><path className="rope-cord" data-segment-index={index} d={path} /></g>)}{thread.mode === "hanging" && <><circle data-thread-anchor="start" cx={thread.startX} cy={thread.startY} r="9" /><circle data-thread-anchor="end" cx={thread.endX} cy={thread.endY} r="9" /></>}</g>;
     })}</svg>
     {isEdit && threads.map((thread, index) => {
-      const members = thread.itemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
-      const middle = thread.mode === "hanging" ? hangingPoint(thread, 0.5) : members.length ? itemCenter(members[Math.floor((members.length - 1) / 2)]) : { x: thread.startX, y: thread.startY };
-      if (selectedThreadId !== thread.id) return <button key={thread.id} type="button" className="rope-edit-handle" aria-label={`실 ${index + 1} 꾸미기`} style={{ left: middle.x, top: middle.y, "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onThreadSelect?.(thread.id); }} />;
+      const middle = threadControlPoint(thread, itemMap);
+      if (selectedThreadId !== thread.id) return <button key={thread.id} type="button" data-thread-control-id={thread.id} data-thread-part="edit" className="rope-edit-handle" aria-label={`실 ${index + 1} 꾸미기`} style={{ left: middle.x, top: middle.y, "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onThreadSelect?.(thread.id); }} />;
       return <div key={thread.id} className="rope-selected-controls"><ThreadDragHandle thread={thread} part="whole" x={middle.x} y={middle.y} scale={scale} onDrag={thread.mode === "hanging" ? onThreadDrag : undefined} />{thread.mode === "hanging" && <><ThreadDragHandle thread={thread} part="start" x={thread.startX} y={thread.startY} scale={scale} onDrag={onThreadDrag} /><ThreadDragHandle thread={thread} part="end" x={thread.endX} y={thread.endY} scale={scale} onDrag={onThreadDrag} /></>}</div>;
     })}
     {items.map((item) => <BoardPiece key={item.id} item={item} url={itemAssetUrl(item, assetOverrides)} mode={mode} selected={selectedItemIds.length === 1 && selectedItemIds[0] === item.id} multiSelected={selectedItemIds.length > 1 && selectedItemIds.includes(item.id)} clipped={clippedIds.has(item.id)} scale={scale} onSelect={(event) => onItemSelect?.(item.id, event)} onOpen={() => onItemOpen?.(item)} onOpenBundle={() => onBundleOpen?.(item)} onResize={onItemResize} onRotate={onItemRotate} onKeyboardMove={onKeyboardMove} eagerImages={eager} decorative={isDecorative} />)}

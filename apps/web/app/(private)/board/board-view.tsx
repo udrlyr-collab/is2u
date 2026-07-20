@@ -25,7 +25,7 @@ import { AttachmentPicker, PaperSwatches, StickerPicker, StickerVariantPicker } 
 import { BoardArtwork, BoardNotePaper, MemoryDetailCard } from "./board-renderer";
 import { StickerGraphic } from "./board-sticker-graphic";
 import { BoardBottomSheet, type BoardBottomSheetHandle } from "./board-bottom-sheet";
-import { boundedGroupDelta, clamp as clampNumber, hangingLayout, hangingPath, linkingPaths } from "./board-geometry";
+import { boundedGroupDelta, clamp as clampNumber, hangingLayout, hangingPath, linkingPaths, threadControlPoint } from "./board-geometry";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -49,6 +49,12 @@ const ZOOM_MAX = 4;
 const BOARD_EXPORT_FOOTER_HEIGHT = 100;
 const VIEWPORT_COMMIT_DELAY_MS = 140;
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+type ThreadPreviewGeometry = {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  control: { x: number; y: number };
+};
 
 function todayInSeoul() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -492,6 +498,33 @@ export function BoardView({ boardId }: { boardId: string }) {
   const nextItemTransforms = useRef<Map<string, string>>(new Map());
   const nextItemGeometry = useRef<Map<string, Pick<BoardItem, "x" | "y" | "width" | "height" | "rotationTenths">>>(new Map());
   const nextThreadPaths = useRef<Map<string, Array<{ selector: string; d: string }>>>(new Map());
+  const nextThreadGeometry = useRef<Map<string, ThreadPreviewGeometry>>(new Map());
+
+  function previewGeometryForThread(thread: BoardThread, previewMap: Map<string, BoardItem>): ThreadPreviewGeometry {
+    return {
+      start: { x: thread.startX, y: thread.startY },
+      end: { x: thread.endX, y: thread.endY },
+      control: threadControlPoint(thread, previewMap),
+    };
+  }
+
+  function applyThreadPreviewGeometry(element: HTMLElement, id: string, geometry: ThreadPreviewGeometry) {
+    const threadElement = element.querySelector<SVGGElement>(`[data-thread-id="${id}"]`);
+    const startAnchor = threadElement?.querySelector<SVGCircleElement>('[data-thread-anchor="start"]');
+    const endAnchor = threadElement?.querySelector<SVGCircleElement>('[data-thread-anchor="end"]');
+    startAnchor?.setAttribute("cx", `${geometry.start.x}`);
+    startAnchor?.setAttribute("cy", `${geometry.start.y}`);
+    endAnchor?.setAttribute("cx", `${geometry.end.x}`);
+    endAnchor?.setAttribute("cy", `${geometry.end.y}`);
+
+    (["start", "end", "whole", "edit"] as const).forEach((part) => {
+      const point = part === "start" ? geometry.start : part === "end" ? geometry.end : geometry.control;
+      element.querySelectorAll<HTMLElement>(`[data-thread-control-id="${id}"][data-thread-part="${part}"]`).forEach((handle) => {
+        handle.style.left = `${point.x}px`;
+        handle.style.top = `${point.y}px`;
+      });
+    });
+  }
 
   function flushDOMUpdate() {
     if (domUpdateFrame.current !== null) cancelAnimationFrame(domUpdateFrame.current);
@@ -529,6 +562,9 @@ export function BoardView({ boardId }: { boardId: string }) {
       });
     });
     nextThreadPaths.current.clear();
+
+    nextThreadGeometry.current.forEach((geometry, id) => applyThreadPreviewGeometry(element, id, geometry));
+    nextThreadGeometry.current.clear();
   }
 
   function requestDOMUpdate() {
@@ -548,6 +584,7 @@ export function BoardView({ boardId }: { boardId: string }) {
     nextItemTransforms.current.clear();
     nextItemGeometry.current.clear();
     nextThreadPaths.current.clear();
+    nextThreadGeometry.current.clear();
   }
 
   function panDOM(targetX: number, targetY: number) {
@@ -669,7 +706,13 @@ export function BoardView({ boardId }: { boardId: string }) {
     settledItems.forEach((item) => {
       settledMap.set(item.id, item);
       const itemElement = element.querySelector<HTMLElement>(`[data-item-id="${item.id}"]`);
-      if (itemElement) itemElement.style.transform = `rotate(${item.rotationTenths / 10}deg)`;
+      if (itemElement) {
+        itemElement.style.left = `${item.x}px`;
+        itemElement.style.top = `${item.y}px`;
+        itemElement.style.width = `${item.width}px`;
+        itemElement.style.height = `${item.height}px`;
+        itemElement.style.transform = `rotate(${item.rotationTenths / 10}deg)`;
+      }
     });
 
     const settledIds = new Set(settledItems.map((item) => item.id));
@@ -680,7 +723,20 @@ export function BoardView({ boardId }: { boardId: string }) {
           pathElement.setAttribute("d", path);
         });
       });
+      applyThreadPreviewGeometry(element, thread.id, previewGeometryForThread(thread, settledMap));
     });
+  }
+
+  function originalDragItems(
+    draggedItemIds: string[],
+    origins: Map<string, { x: number; y: number }>,
+    hangingOrigin: { thread: BoardThread; items: Map<string, BoardItem> } | null,
+  ) {
+    return draggedItemIds.map((id) => {
+      const item = hangingOrigin?.items.get(id) ?? itemMap.get(id);
+      const origin = origins.get(id);
+      return item && origin ? { ...item, x: origin.x, y: origin.y } : item ?? null;
+    }).filter((item): item is BoardItem => Boolean(item));
   }
 
   function previewBoardItemsDOM(previewItems: BoardItem[], previewThreads = threads) {
@@ -697,6 +753,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         { selector: `[data-thread-id="${thread.id}"] .rope-shadow[data-segment-index="${index}"]`, d },
         { selector: `[data-thread-id="${thread.id}"] .rope-cord[data-segment-index="${index}"]`, d },
       ]));
+      nextThreadGeometry.current.set(thread.id, previewGeometryForThread(thread, previewMap));
     });
     requestDOMUpdate();
   }
@@ -734,6 +791,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         });
       });
       nextThreadPaths.current.set(thread.id, selectorPaths);
+      nextThreadGeometry.current.set(thread.id, previewGeometryForThread(thread, tempItemMap));
     });
 
     requestDOMUpdate();
@@ -1129,9 +1187,7 @@ export function BoardView({ boardId }: { boardId: string }) {
       const previousGesture = gesture.current;
       if (previousGesture?.type === "item-drag") {
         discardQueuedDOMUpdate();
-        const originalItems = previousGesture.threadDragOrigin
-          ? [...previousGesture.threadDragOrigin.items.values()]
-          : previousGesture.draggedItemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+        const originalItems = originalDragItems(previousGesture.draggedItemIds, previousGesture.itemDragOrigins, previousGesture.threadDragOrigin);
         restoreSettledDragDOM(originalItems, previousGesture.threadDragOrigin?.thread ?? null);
       }
       const p1 = values[0];
@@ -1355,9 +1411,7 @@ export function BoardView({ boardId }: { boardId: string }) {
 
     if (currentGesture.type === "item-drag") {
       discardQueuedDOMUpdate();
-      const originalItems = currentGesture.threadDragOrigin
-        ? [...currentGesture.threadDragOrigin.items.values()]
-        : currentGesture.draggedItemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+      const originalItems = originalDragItems(currentGesture.draggedItemIds, currentGesture.itemDragOrigins, currentGesture.threadDragOrigin);
       restoreSettledDragDOM(originalItems, currentGesture.threadDragOrigin?.thread ?? null);
     }
   }
@@ -1452,8 +1506,15 @@ export function BoardView({ boardId }: { boardId: string }) {
       setMessage("실을 바꿨어요");
     } catch { setMessage("실을 바꾸지 못했어요"); void load(); }
   }
-  function moveThread(thread: BoardThread, part: "start" | "end" | "whole", dx: number, dy: number, done: boolean) {
+  function moveThread(thread: BoardThread, part: "start" | "end" | "whole", dx: number, dy: number, done: boolean, cancelled: boolean) {
     if (!threadDragOrigin.current || threadDragOrigin.current.thread.id !== thread.id) threadDragOrigin.current = { thread, items: new Map(thread.itemIds.map((id) => itemMap.get(id)).filter((value): value is BoardItem => Boolean(value)).map((value) => [value.id, value])) };
+    if (cancelled) {
+      const original = threadDragOrigin.current;
+      discardQueuedDOMUpdate();
+      restoreSettledDragDOM([...original.items.values()], original.thread);
+      threadDragOrigin.current = null;
+      return;
+    }
     const origin = threadDragOrigin.current.thread;
     const translated = part === "whole" ? {
       x: clampNumber(dx, -Math.min(origin.startX, origin.endX), BOARD_WIDTH - Math.max(origin.startX, origin.endX)),
@@ -1620,8 +1681,9 @@ export function BoardView({ boardId }: { boardId: string }) {
       </div>
       {payload.canEdit && editMode && panelOpen && <div className="board-toolbox-slot">
       <BoardBottomSheet ref={sheetRef} className={`board-bottom-sheet desktop-toolbox context-${contextMode}`} title={toolboxTitle} headerAction={
-          <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); setSelectedThreadId(null); }}>
-            <span>여러 장</span>
+          <button type="button" className="multi-mode-toggle" aria-label="여러 장 선택 모드" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); setSelectedThreadId(null); }}>
+            <span className="multi-select-mark" aria-hidden="true"><i /></span>
+            <span className="multi-mode-toggle-label">여러 장 선택</span>
           </button>
         }>
         {contextMode === "add" && <div className="tool-paper-grid">

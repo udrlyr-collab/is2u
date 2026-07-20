@@ -97,6 +97,8 @@ describe("board rendering contracts", () => {
 
     expect(view).toContain("previewBoardItemsDOM");
     expect(view).toContain("nextItemGeometry");
+    expect(view).toContain("nextThreadGeometry");
+    expect(view).toContain("applyThreadPreviewGeometry");
     expect(view).toContain("flushDOMUpdate");
     expect(view).toContain("pendingThreadCurve");
     expect(view).toContain("onPointerCancel={commitThreadCurvePreview}");
@@ -106,6 +108,27 @@ describe("board rendering contracts", () => {
     expect(renderer).toContain('const eager = mode === "export" || mode === "thumbnail" || eagerImages');
     expect(renderer).toContain('const eager = mode === "export" || eagerImages');
     expect(renderer).not.toContain('mode === "edit" || eagerImages');
+    expect(renderer).toContain('data-thread-anchor="start"');
+    expect(renderer).toContain('data-thread-anchor="end"');
+    expect(renderer).toContain("data-thread-control-id={thread.id}");
+    expect(renderer).toContain("data-thread-part={part}");
+    expect(renderer).toContain("onPointerCancel={(event) => finish(event, true)}");
+    expect(renderer).toContain("onLostPointerCapture={(event) => finish(event, true)}");
+    expect(view).toContain("if (cancelled)");
+    expect(view).toContain("originalDragItems(previousGesture.draggedItemIds");
+    expect(view).toContain("originalDragItems(currentGesture.draggedItemIds");
+    expect(view).toContain('itemElement.style.left = `${item.x}px`');
+    expect(view).toContain('itemElement.style.top = `${item.y}px`');
+  });
+
+  it("keeps the toolbox controls legible inside its own narrow column", async () => {
+    const [view, styles] = await Promise.all([readFile(VIEW_PATH, "utf8"), readFile(STYLES_PATH, "utf8")]);
+    expect(view).toContain('<span className="multi-mode-toggle-label">여러 장 선택</span>');
+    expect(view).toContain('aria-label="여러 장 선택 모드"');
+    expect(styles).toMatch(/\.board-date-range-editor \.board-date-range-fields\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+    expect(styles).toMatch(/\.board-date-range-fields input\[type="date"\]\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s);
+    expect(styles).toMatch(/\.board-toolbox-header-actions\s*\{[^}]*max-width:\s*none/s);
+    expect(styles).toMatch(/\.multi-mode-toggle\s*\{[^}]*width:\s*auto[^}]*max-width:\s*none/s);
   });
 
   it("keeps shadows and selection decoration on visual layers only", async () => {

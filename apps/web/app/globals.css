@@ -1582,9 +1582,9 @@ h3 { margin-bottom: var(--space-2); }
 /* 10. Multi-select header toggle */
 .multi-mode-toggle {
   flex: 0 0 auto;
-  width: 5.4rem;
-  min-width: 5.4rem;
-  max-width: 100%;
+  width: auto;
+  min-width: 6.85rem;
+  max-width: none;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
@@ -1592,7 +1592,7 @@ h3 { margin-bottom: var(--space-2); }
   border: 1px solid var(--border);
   background: var(--paper);
   color: var(--muted-foreground);
-  padding: 0.35rem 0.75rem;
+  padding: 0.35rem 0.55rem;
   border-radius: 4px;
   font-family: var(--font-body);
   font-size: 0.76rem;
@@ -1601,25 +1601,19 @@ h3 { margin-bottom: var(--space-2); }
   box-shadow: 1px 1px 0 rgb(70 50 40 / 0.08);
   transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
-.multi-mode-toggle span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.multi-mode-toggle::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1px solid transparent;
-  transition: background-color 150ms ease, border-color 150ms ease;
-}
+.multi-mode-toggle-label { white-space: nowrap; }
+.multi-select-mark { position: relative; flex: 0 0 auto; width: 0.95rem; height: 0.85rem; }
+.multi-select-mark::before,
+.multi-select-mark::after { content: ""; position: absolute; width: 0.62rem; height: 0.48rem; border: 1px solid currentColor; border-radius: 1px; background: var(--paper); }
+.multi-select-mark::before { left: 0.06rem; top: 0.04rem; transform: rotate(-4deg); opacity: 0.58; }
+.multi-select-mark::after { right: 0.02rem; bottom: 0.02rem; box-shadow: 1px 1px 0 rgb(70 50 40 / 0.08); }
+.multi-select-mark > i { position: absolute; z-index: 1; right: -0.06rem; bottom: -0.2rem; width: 0.48rem; height: 0.48rem; display: grid; place-items: center; border-radius: 50%; background: #a45d59; color: #fffdf9; font-size: 0.42rem; font-style: normal; line-height: 1; opacity: 0; transform: scale(0.7); transition: opacity 150ms ease, transform 150ms ease; }
+.multi-select-mark > i::before { content: "✓"; }
 .multi-mode-toggle:hover {
   background-color: #fffdf0;
   color: var(--foreground);
 }
-.multi-mode-toggle[aria-pressed="true"]::before {
-  background: #a45d59;
-  border-color: #a45d59;
-}
+.multi-mode-toggle[aria-pressed="true"] .multi-select-mark > i { opacity: 1; transform: scale(1); }
 .multi-mode-toggle[aria-pressed="true"] {
   border-color: #9c796c !important;
   background-color: #f7ede2 !important;
@@ -1647,7 +1641,7 @@ h3 { margin-bottom: var(--space-2); }
   min-width: 0;
   overflow: hidden;
 }
-.board-toolbox-header-actions { min-width: 0; max-width: 5.6rem; display: flex; align-items: center; gap: 0.35rem; }
+.board-toolbox-header-actions { min-width: 0; max-width: none; display: flex; align-items: center; gap: 0.35rem; }
 .board-toolbox > header strong {
   flex: 1 1 0;
   overflow: hidden;
@@ -2036,7 +2030,10 @@ h3 { margin-bottom: var(--space-2); }
 .sticker-variant-grid > button > b { position: absolute; top: 0.25rem; right: 0.3rem; width: 1.2rem; height: 1.2rem; display: grid; place-items: center; border-radius: 50%; background: var(--paper); font-size: 0.58rem; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.12); }
 
 .board-date-range-fields { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
-.board-date-range-editor { min-width: 0; display: grid; gap: 0.55rem; padding: 0.7rem; background: rgb(255 253 249 / 0.7); border: 1px dashed rgb(123 109 100 / 0.28); }
+.board-date-range-fields > .field,
+.board-date-range-fields input[type="date"] { min-width: 0; max-width: 100%; }
+.board-date-range-editor { width: 100%; min-width: 0; display: grid; gap: 0.55rem; padding: 0.7rem; background: rgb(255 253 249 / 0.7); border: 1px dashed rgb(123 109 100 / 0.28); box-sizing: border-box; }
+.board-date-range-editor .board-date-range-fields { grid-template-columns: minmax(0, 1fr); }
 .board-date-range-editor > .button { justify-self: start; }
 .board-toolbox, .board-tool-content, .tool-section-stack { min-width: 0; }
 

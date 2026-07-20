@@ -18,6 +18,14 @@ export function hangingPoint(thread: BoardThread, t: number) {
   return { x, y, angle: Math.atan2(dy, dx) * 180 / Math.PI };
 }
 
+export function threadControlPoint(thread: BoardThread, itemMap: Map<string, BoardItem>): { x: number; y: number } {
+  if (thread.mode === "hanging") return hangingPoint(thread, 0.5);
+  const members = thread.itemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+  return members.length
+    ? itemCenter(members[Math.floor((members.length - 1) / 2)])
+    : { x: thread.startX, y: thread.startY };
+}
+
 export function hangingLayout(thread: BoardThread, itemMap: Map<string, BoardItem>) {
   return thread.itemIds.flatMap((id, index) => {
     const item = itemMap.get(id);
