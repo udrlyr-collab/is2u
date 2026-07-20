@@ -15,12 +15,12 @@ const createSchema = z.object({
   endY: z.number().int().min(0).max(BOARD_HEIGHT),
   color: z.enum(colors).default("warm-brown"),
   mode: z.enum(["hanging", "linking"]).default("hanging"),
-  itemIds: z.array(z.uuid()).min(2, "연결할 사진을 두 장 이상 골라주세요").max(30),
+  itemIds: z.array(z.uuid()).min(2, "연결할 조각을 두 개 이상 골라주세요").max(30),
 }).refine((value) => Math.hypot(value.endX - value.startX, value.endY - value.startY) >= 120, "실은 조금 더 길게 걸어주세요");
 
 const updateSchema = z.object({
   id: z.uuid(),
-  itemIds: z.array(z.uuid()).min(2, "실에는 두 장 이상 연결해 주세요").max(30).optional(),
+  itemIds: z.array(z.uuid()).min(2, "실에는 조각을 두 개 이상 연결해 주세요").max(30).optional(),
   color: z.enum(colors).optional(),
   curve: z.number().int().min(-160).max(160).optional(),
   mode: z.enum(["hanging", "linking"]).optional(),
@@ -44,8 +44,9 @@ export const POST = withApiErrors(async (request: Request) => {
   const input = createSchema.parse(await readJson(request));
   const board = await requireOwnBoard(session.user.id, input.boardId);
   const itemIds = [...new Set(input.itemIds)];
-  const visible = await getDb().select({ id: boardItems.id, elementType: boardItems.elementType }).from(boardItems).where(and(eq(boardItems.boardId, board.id), inArray(boardItems.id, itemIds)));
-  if (visible.length !== itemIds.length || visible.some((item) => !["image", "memory"].includes(item.elementType))) throw new HttpError(404, "연결할 사진과 추억을 찾을 수 없어요");
+  if (itemIds.length < 2) throw new HttpError(400, "연결할 조각을 두 개 이상 골라주세요");
+  const visible = await getDb().select({ id: boardItems.id }).from(boardItems).where(and(eq(boardItems.boardId, board.id), inArray(boardItems.id, itemIds)));
+  if (visible.length !== itemIds.length) throw new HttpError(404, "연결할 조각을 찾을 수 없어요");
   const curve = Math.min(120, Math.max(24, Math.round(Math.abs(input.endX - input.startX) / 12)));
   const thread = await getDb().transaction(async (tx) => {
     const [created] = await tx.insert(boardThreads).values({ boardId: board.id, startX: input.startX, startY: input.startY, endX: input.endX, endY: input.endY, curve, color: input.color, mode: input.mode }).returning();
@@ -64,8 +65,9 @@ export const PATCH = withApiErrors(async (request: Request) => {
   const db = getDb();
   if (input.itemIds) {
     const itemIds = [...new Set(input.itemIds)];
+    if (itemIds.length < 2) throw new HttpError(400, "실에는 조각을 두 개 이상 연결해 주세요");
     const visible = itemIds.length ? await db.select({ id: boardItems.id }).from(boardItems).where(and(eq(boardItems.boardId, thread.boardId), inArray(boardItems.id, itemIds))) : [];
-    if (visible.length !== itemIds.length) throw new HttpError(404, "실에 걸 추억을 찾을 수 없어요");
+    if (visible.length !== itemIds.length) throw new HttpError(404, "실에 연결할 조각을 찾을 수 없어요");
     const previousMembers = await db.select().from(boardThreadItems).where(eq(boardThreadItems.threadId, thread.id));
     const removedIds = previousMembers.map((member) => member.itemId).filter((id) => !itemIds.includes(id));
     await db.transaction(async (tx) => {

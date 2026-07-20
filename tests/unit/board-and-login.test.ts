@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { normalizeMissionIntervalInputs } from "@is2u/core/mission-interval";
-import { boundedGroupDelta, hangingPoint } from "../../apps/web/app/(private)/board/board-geometry";
+import { boundedGroupDelta, hangingPoint, linkingPaths } from "../../apps/web/app/(private)/board/board-geometry";
 import type { BoardItem, BoardThread } from "../../apps/web/app/(private)/board/board-types";
 
 describe("login, interval inputs and memory boards", () => {
@@ -12,6 +12,11 @@ describe("login, interval inputs and memory boards", () => {
     const middle = hangingPoint(thread, 0.5);
     expect(middle.x).toBe(300);
     expect(middle.y).toBe(150);
+
+    const first = { id: "first", x: 10, y: 20, width: 100, height: 80 } as BoardItem;
+    const second = { id: "second", x: 400, y: 300, width: 120, height: 90 } as BoardItem;
+    const linking = { itemIds: [second.id, first.id], curve: 0 } as BoardThread;
+    expect(linkingPaths(linking, new Map([[first.id, first], [second.id, second]]))[0]).toMatch(/^M 460 345 Q /);
   });
   it("allows empty mobile interval input and normalizes on commit", () => {
     expect(normalizeMissionIntervalInputs("5", "90", { min: 40, max: 90 }, "min")).toEqual({ min: 10, max: 90 });
@@ -70,10 +75,26 @@ describe("login, interval inputs and memory boards", () => {
       readFile("apps/web/app/globals.css", "utf8"),
     ]);
     expect(view).toContain("onPointerDown={startCanvas}");
-    expect(view).toContain("onClick={clearSelection}");
-    expect(view).toContain('closest("[data-board-item],button,a,.rope,.board-bundle-spread")');
-    expect(view).toContain("pointers.current");
-    expect(renderer).toContain("onDragEnd?.(item");
+    expect(view).toContain("activePointers.current");
+    expect(view).toContain("onPointerCancel={cancelCanvas}");
+    expect(view).toContain("onLostPointerCapture={cancelCanvas}");
+    expect(view).not.toContain("onPointerLeave={endCanvas}");
+    expect(view).toContain('addEventListener("wheel", onWheel, { passive: false })');
+    expect(view).toContain('addEventListener("touchmove", onTouchMove, { passive: false })');
+    expect(view).toContain("activePointers.current.size >= 2");
+    expect(view).toContain("}, [payload?.board?.id]);");
+    expect(view).toContain("discardQueuedDOMUpdate");
+    expect(view).toContain("restoreSettledDragDOM");
+    expect(view).toContain("hangingLayout(thread, hangingOrigin.items)");
+    expect(view).toContain("itemSaveTimer");
+    expect(view).toContain("viewportSaveTimer");
+    expect(view).toContain("itemSaveInFlight");
+    expect(view).toContain("viewportSaveInFlight");
+    expect(view).toContain("saveFlushActions.current?.items(true)");
+    expect(view).toContain("const merged = new Map");
+    expect(view).not.toContain("const saveTimer =");
+    expect(view).not.toContain("Compatibility comments");
+    expect(renderer).not.toContain("Compatibility comment");
     expect(view).toContain("boundedGroupDelta");
     expect(view).toContain("items: persisted.map(itemPatch)");
     expect(view).toContain('method: "PATCH"');
@@ -81,6 +102,8 @@ describe("login, interval inputs and memory boards", () => {
     expect(view).not.toContain("모인 곳 보기");
     expect(view).toContain("실에 매달기");
     expect(view).toContain("실로 연결하기");
+    expect(view).toContain("연결할 조각을 두 개 이상 골라주세요");
+    expect(threadRoute).not.toContain('["image", "memory"]');
     expect(view).not.toContain("선택한 순서대로 펼치기");
     expect(view).toContain("selectedItemIds");
     expect(renderer).toContain("board-clothespin");
@@ -93,6 +116,18 @@ describe("login, interval inputs and memory boards", () => {
     expect(view).toContain("payload?.canEdit");
     expect(view).toContain("구경하는 중");
     expect(view).toContain("저장하지 못했어요");
+  });
+
+  it("rejects board threads with fewer than two unique items after deduplication", async () => {
+    const threadRoute = await readFile("apps/web/app/api/board/threads/route.ts", "utf8");
+    const uniqueItemGuards = [...threadRoute.matchAll(
+      /const itemIds = \[\.\.\.new Set\(input\.itemIds\)\];\s+if \(itemIds\.length < 2\) throw new HttpError\(400, "([^"]+)"\);/g,
+    )].map((match) => match[1]);
+
+    expect(uniqueItemGuards).toEqual([
+      "연결할 조각을 두 개 이상 골라주세요",
+      "실에는 조각을 두 개 이상 연결해 주세요",
+    ]);
   });
 
   it("preserves transparent images and shares the common high-resolution board renderer", async () => {
@@ -113,9 +148,18 @@ describe("login, interval inputs and memory boards", () => {
     expect(view).toContain('import("html2canvas")');
     expect(view).toContain("scale: 2");
     expect(view).toContain("await document.fonts.ready");
+    expect(view).toContain("const capture = shareCapture.current;");
+    expect(view).toContain("height: BOARD_HEIGHT + BOARD_EXPORT_FOOTER_HEIGHT");
+    expect(view).toContain("board-export-footer");
     expect(view).toContain("<BoardArtwork");
     expect(list).toContain("<ReadOnlyBoardPreview");
     expect(renderer).toContain("export function BoardArtwork");
+    expect(renderer).toContain('className="bundle-memory-details"');
+    expect(styles).toContain("position: relative; inset: auto; flex: 0 0 auto; transform-origin: 50% 50%");
+    expect(styles).toContain("height: 1500px");
+    expect(styles).toContain("flex: 0 0 1400px");
+    expect(styles).toContain("font-family: var(--font-logo)");
+    expect(styles).toContain("filter: none !important");
     expect(boardRoute).toContain("loadBoardArtwork");
     expect(boardContent).toContain("requireVisibleBoard");
     expect(mediaContent).toContain("canAccessMemory");
@@ -125,16 +169,22 @@ describe("login, interval inputs and memory boards", () => {
   });
 
   it("opens complete memory bundles inside the board and restores navigation state", async () => {
-    const [view, renderer, settings, history] = await Promise.all([
+    const [view, renderer, settings, history, releases] = await Promise.all([
       readFile("apps/web/app/(private)/board/board-view.tsx", "utf8"),
       readFile("apps/web/app/(private)/board/board-renderer.tsx", "utf8"),
       readFile("apps/web/app/(private)/settings/settings-panel.tsx", "utf8"),
       readFile("apps/web/app/history/page.tsx", "utf8"),
+      readFile("apps/web/lib/releases.ts", "utf8"),
     ]);
     expect(view).toContain("group.memories");
     expect(view).not.toContain(".slice(0, 7)");
     expect(view).toContain("board-bundle-spread");
     expect(view).toContain("bundle-memory-collage");
+    expect(view).toContain('role="dialog" aria-modal="true"');
+    expect(view).toContain('event.key === "Escape"');
+    expect(view).toContain('event.key !== "Tab"');
+    expect(view).toContain("{openGroup && <BundleSpread");
+    expect(view).not.toContain("animatingGroupId");
     expect(view).not.toContain("이전 추억");
     expect(view).not.toContain("다음 추억");
     expect(view).toContain("is2u-board-return:");
@@ -142,11 +192,13 @@ describe("login, interval inputs and memory boards", () => {
     expect(settings).toContain('href="/design"');
     expect(settings).toContain('href="/history"');
     expect(history).toContain("RELEASE_NOTES");
+    for (const note of ["Safari에서도 보드를", "보드 목록에서 코르크판", "공유 사진에 보드의 질감", "고른 보드 조각", "여러 장 고르기는", "추억 번들을 열면", "원래 색이 또렷하게"]) expect(releases).toContain(note);
   });
 
   it("uses a real three-stage mobile bottom sheet with live pointer tracking and accessible controls", async () => {
-    const [sheet, styles] = await Promise.all([
+    const [sheet, view, styles] = await Promise.all([
       readFile("apps/web/app/(private)/board/board-bottom-sheet.tsx", "utf8"),
+      readFile("apps/web/app/(private)/board/board-view.tsx", "utf8"),
       readFile("apps/web/app/globals.css", "utf8"),
     ]);
     for (const stage of ["collapsed", "middle", "expanded"]) expect(sheet).toContain(stage);
@@ -159,6 +211,10 @@ describe("login, interval inputs and memory boards", () => {
     expect(styles).toContain("translateY(var(--sheet-translate))");
     expect(styles).toContain('data-sheet-dragging="true"');
     expect(styles).toContain("touch-action: none");
+    expect(sheet).toContain("headerAction?: ReactNode");
+    expect(view).toContain("headerAction={");
+    expect(view).not.toContain("tool-header-bar");
+    expect(styles).not.toContain('.multi-mode-toggle[aria-pressed="true"]::after');
   });
 
   it("keeps manually written notes in the shared timeline and excludes future pinned times", async () => {

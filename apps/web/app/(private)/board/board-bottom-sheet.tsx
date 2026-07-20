@@ -25,9 +25,10 @@ function stageHeights(viewportHeight: number) {
 export const BoardBottomSheet = forwardRef<BoardBottomSheetHandle, {
   title: string;
   children: ReactNode;
+  headerAction?: ReactNode;
   className?: string;
   onCollapsed?: () => void;
-}>(function BoardBottomSheet({ title, children, className = "", onCollapsed }, forwardedRef) {
+}>(function BoardBottomSheet({ title, children, headerAction, className = "", onCollapsed }, forwardedRef) {
   const rootRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<SheetStage>("middle");
@@ -161,14 +162,17 @@ export const BoardBottomSheet = forwardRef<BoardBottomSheetHandle, {
       ><i aria-hidden="true" /></div>
     )}
     <header>
-      <div><span aria-hidden="true">✦</span><strong>{title}</strong></div>
-      {mobile && (
-        <div className="sheet-accessible-actions">
-          <button type="button" onClick={() => applyStage("expanded", false)} aria-label="꾸미기 패널 펼치기">펼치기</button>
-          <button type="button" onClick={() => applyStage("collapsed", false)} aria-label="꾸미기 패널 접기">접기</button>
-        </div>
-      )}
+      <div className="board-toolbox-heading"><span aria-hidden="true">✦</span><strong>{title}</strong></div>
+      <div className="board-toolbox-header-actions">
+        {headerAction}
+      </div>
     </header>
+    {mobile && (
+      <div className="sheet-accessible-actions">
+        <button type="button" onClick={() => applyStage("expanded", false)} aria-label="꾸미기 패널 펼치기">펼치기</button>
+        <button type="button" onClick={() => applyStage("collapsed", false)} aria-label="꾸미기 패널 접기">접기</button>
+      </div>
+    )}
     <div
       ref={contentRef}
       className="board-tool-content"

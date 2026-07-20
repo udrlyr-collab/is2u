@@ -101,11 +101,24 @@ export function MemoryVisual({ memory, url, detailed = false, eager = false }: {
 }
 
 export function MemoryDetailCard({ memory, url, onOpen }: { memory: BoardMemory; url?: string; onOpen?: () => void }) {
+  const details = <>
+    <header><h3>{memory.title}</h3>{memory.dateEvent && <span className="date-sticker">{memory.dateEvent.title}</span>}</header>
+    <dl><div><dt>처음 붙인 시간</dt><dd>{dateFormatter.format(new Date(memory.firstPinnedAt))}</dd></div><div><dt>남긴 사람</dt><dd>{memory.author.displayName}</dd></div></dl>
+  </>;
+
+  if (memory.type === "audio") {
+    return <article className="board-bundle-memory-card memory-audio">
+      <div className="bundle-memory-open">
+        <MemoryVisual memory={memory} url={url} detailed />
+        <button type="button" className="bundle-memory-details" onClick={onOpen} aria-label={`${memory.title} 자세히 보기`}>{details}</button>
+      </div>
+    </article>;
+  }
+
   return <article className={`board-bundle-memory-card memory-${memory.type}`}>
     <button type="button" className="bundle-memory-open" onClick={onOpen} aria-label={`${memory.title} 자세히 보기`}>
       <MemoryVisual memory={memory} url={url} detailed />
-      <header><h3>{memory.title}</h3>{memory.dateEvent && <span className="date-sticker">{memory.dateEvent.title}</span>}</header>
-      <dl><div><dt>처음 붙인 시간</dt><dd>{dateFormatter.format(new Date(memory.firstPinnedAt))}</dd></div><div><dt>남긴 사람</dt><dd>{memory.author.displayName}</dd></div></dl>
+      {details}
     </button>
   </article>;
 }
@@ -121,9 +134,6 @@ type PieceProps = {
   onSelect?: (event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>) => void;
   onOpen?: () => void;
   onOpenBundle?: () => void;
-  onDragStart?: (item: BoardItem) => void;
-  onDrag?: (item: BoardItem, dx: number, dy: number) => void;
-  onDragEnd?: (item: BoardItem, dx: number, dy: number) => void;
   onResize?: (item: BoardItem, width: number, height: number, done: boolean) => void;
   onRotate?: (item: BoardItem, rotationTenths: number, done: boolean) => void;
   onKeyboardMove?: (item: BoardItem, dx: number, dy: number) => void;
@@ -131,16 +141,13 @@ type PieceProps = {
   decorative?: boolean;
 };
 
-function BoardPiece({ item, url, mode = "view", selected = false, multiSelected = false, clipped = false, scale = 1, onSelect, onOpen, onOpenBundle, onDragStart, onDrag, onDragEnd, onResize, onRotate, onKeyboardMove, eagerImages = false, decorative = false }: PieceProps) {
+function BoardPiece({ item, url, mode = "view", selected = false, multiSelected = false, clipped = false, scale = 1, onSelect, onOpen, onOpenBundle, onResize, onRotate, onKeyboardMove, eagerImages = false, decorative = false }: PieceProps) {
   const resize = useRef<{ pointerId: number; startX: number; width: number; height: number } | null>(null);
   const rotate = useRef<{ pointerId: number; centerX: number; centerY: number } | null>(null);
 
   const editMode = mode === "edit";
   const isDecorative = mode === "thumbnail" || mode === "export" || decorative;
-  const eager = mode === "export" || mode === "edit" || eagerImages;
-
-  // Compatibility comment for unit tests: onDragEnd?.(item
-
+  const eager = mode === "export" || mode === "edit" || mode === "thumbnail" || eagerImages;
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (editMode && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
@@ -212,9 +219,6 @@ type ArtworkProps = {
   onItemOpen?: (item: BoardItem) => void;
   onBundleOpen?: (item: BoardItem) => void;
   onThreadSelect?: (id: string) => void;
-  onItemDragStart?: (item: BoardItem) => void;
-  onItemDrag?: (item: BoardItem, dx: number, dy: number) => void;
-  onItemDragEnd?: (item: BoardItem, dx: number, dy: number) => void;
   onItemResize?: (item: BoardItem, width: number, height: number, done: boolean) => void;
   onItemRotate?: (item: BoardItem, rotationTenths: number, done: boolean) => void;
   onThreadDrag?: (thread: BoardThread, part: ThreadDragPart, dx: number, dy: number, done: boolean) => void;
@@ -222,7 +226,7 @@ type ArtworkProps = {
   eagerImages?: boolean;
 };
 
-export function BoardArtwork({ items, threads, className = "", assetOverrides = {}, mode = "view", scale = 1, selectedItemIds = [], selectedThreadId, onItemSelect, onItemOpen, onBundleOpen, onThreadSelect, onItemDragStart, onItemDrag, onItemDragEnd, onItemResize, onItemRotate, onThreadDrag, onKeyboardMove, eagerImages = false }: ArtworkProps) {
+export function BoardArtwork({ items, threads, className = "", assetOverrides = {}, mode = "view", scale = 1, selectedItemIds = [], selectedThreadId, onItemSelect, onItemOpen, onBundleOpen, onThreadSelect, onItemResize, onItemRotate, onThreadDrag, onKeyboardMove, eagerImages = false }: ArtworkProps) {
   const itemMap = new Map(items.map((item) => [item.id, item]));
   const clippedIds = new Set(threads.filter((thread) => thread.mode === "hanging").flatMap((thread) => thread.itemIds));
   const isEdit = mode === "edit";
@@ -246,7 +250,7 @@ export function BoardArtwork({ items, threads, className = "", assetOverrides = 
       if (selectedThreadId !== thread.id) return <button key={thread.id} type="button" className="rope-edit-handle" aria-label={`실 ${index + 1} 꾸미기`} style={{ left: middle.x, top: middle.y, "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onThreadSelect?.(thread.id); }} />;
       return <div key={thread.id} className="rope-selected-controls"><ThreadDragHandle thread={thread} part="whole" x={middle.x} y={middle.y} scale={scale} onDrag={thread.mode === "hanging" ? onThreadDrag : undefined} />{thread.mode === "hanging" && <><ThreadDragHandle thread={thread} part="start" x={thread.startX} y={thread.startY} scale={scale} onDrag={onThreadDrag} /><ThreadDragHandle thread={thread} part="end" x={thread.endX} y={thread.endY} scale={scale} onDrag={onThreadDrag} /></>}</div>;
     })}
-    {items.map((item) => <BoardPiece key={item.id} item={item} url={itemAssetUrl(item, assetOverrides)} mode={mode} selected={selectedItemIds.length === 1 && selectedItemIds[0] === item.id} multiSelected={selectedItemIds.length > 1 && selectedItemIds.includes(item.id)} clipped={clippedIds.has(item.id)} scale={scale} onSelect={(event) => onItemSelect?.(item.id, event)} onOpen={() => onItemOpen?.(item)} onOpenBundle={() => onBundleOpen?.(item)} onDragStart={onItemDragStart} onDrag={onItemDrag} onDragEnd={onItemDragEnd} onResize={onItemResize} onRotate={onItemRotate} onKeyboardMove={onKeyboardMove} eagerImages={eager} decorative={isDecorative} />)}
+    {items.map((item) => <BoardPiece key={item.id} item={item} url={itemAssetUrl(item, assetOverrides)} mode={mode} selected={selectedItemIds.length === 1 && selectedItemIds[0] === item.id} multiSelected={selectedItemIds.length > 1 && selectedItemIds.includes(item.id)} clipped={clippedIds.has(item.id)} scale={scale} onSelect={(event) => onItemSelect?.(item.id, event)} onOpen={() => onItemOpen?.(item)} onOpenBundle={() => onBundleOpen?.(item)} onResize={onItemResize} onRotate={onItemRotate} onKeyboardMove={onKeyboardMove} eagerImages={eager} decorative={isDecorative} />)}
   </div>;
 }
 

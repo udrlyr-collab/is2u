@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Field, InlineNotice, Input, Textarea } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
 import { apiFetch } from "../../../lib/client";
@@ -15,7 +15,6 @@ import {
   BOARD_WIDTH,
   PAPER_COLORS,
   THREAD_COLORS,
-  isThreadable,
   itemAssetUrl,
   memoryAssetUrl,
   paperLabel,
@@ -32,7 +31,19 @@ import {
 type SaveState = "idle" | "saving" | "saved" | "error";
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 4;
+const BOARD_EXPORT_FOOTER_HEIGHT = 100;
+const VIEWPORT_COMMIT_DELAY_MS = 140;
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+function itemPatch(next: BoardItem) {
+  return { id: next.id, x: next.x, y: next.y, width: next.width, height: next.height, rotationTenths: next.rotationTenths, zIndex: next.zIndex, textContent: next.textContent ?? undefined, styleJson: next.styleJson };
+}
+
+type SafariGestureEvent = Event & {
+  clientX: number;
+  clientY: number;
+  scale: number;
+};
 
 function PaperSwatches({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return <div className="paper-swatch-grid" role="radiogroup" aria-label="종이색">{PAPER_COLORS.map((color, index) => <button key={color.id} type="button" role="radio" aria-checked={value === color.id} onClick={() => onChange(color.id)} style={{ "--swatch-color": color.value, "--swatch-turn": `${(index % 3 - 1) * 0.6}deg` } as CSSProperties}><i aria-hidden="true" /> <span>{color.label}</span>{value === color.id && <b aria-hidden="true">✓</b>}</button>)}</div>;
@@ -93,7 +104,7 @@ function NoteDialog({ boardId, onClose, onDone }: { boardId: string; onClose: ()
 
 function ShareDialog({ status, message, onClose, onShare }: { status: "idle" | "preparing" | "success" | "error"; message: string; onClose: () => void; onShare: () => void }) {
   return (
-    <div className="board-dialog-backdrop">
+    <div className="board-dialog-backdrop board-share-dialog-backdrop">
       <section className="board-share-dialog compact" role="dialog" aria-modal="true" aria-labelledby="share-dialog-title">
         <p className="paper-label">KEEP THE BOARD</p>
         <h2 id="share-dialog-title">보드를 한 장의 사진으로 남겨요</h2>
@@ -130,9 +141,39 @@ function ShareDialog({ status, message, onClose, onShare }: { status: "idle" | "
 }
 
 function BundleSpread({ group, isClosing, onClose, onOpenDetail }: { group: NonNullable<BoardItem["group"]>; isClosing: boolean; onClose: () => void; onOpenDetail: (memoryId: string) => void }) {
-  return <section className={`board-bundle-spread${isClosing ? " is-closing" : " is-opening"}`} aria-label={`${group.name} 추억 번들`}>
+  const dialog = useRef<HTMLElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const closeAction = useRef(onClose);
+  useEffect(() => { closeAction.current = onClose; });
+  useEffect(() => {
+    closeButton.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAction.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog.current) return;
+      const focusable = [...dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], audio[controls], [tabindex]:not([tabindex="-1"])')]
+        .filter((element) => !element.hasAttribute("hidden") && element.getClientRects().length > 0);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  return <section ref={dialog} className={`board-bundle-spread${isClosing ? " is-closing" : " is-opening"}`} role="dialog" aria-modal="true" aria-label={`${group.name} 추억 번들`}>
     <div className="bundle-spread-backdrop" aria-hidden="true" onClick={onClose} />
-    <header><div><span className="paper-label">MEMORY BUNDLE</span><h2>{group.name}</h2><small>{group.memories.length}개의 추억</small></div><button type="button" onClick={onClose}>닫기</button></header>
+    <header><div><span className="paper-label">MEMORY BUNDLE</span><h2>{group.name}</h2><small>{group.memories.length}개의 추억</small></div><button ref={closeButton} type="button" onClick={onClose}>닫기</button></header>
     {group.note && <p className="bundle-spread-note">{group.note}</p>}
     <div className="bundle-memory-collage">{group.memories.map((memory, index) => { const asset = primaryAsset(memory); return <div key={memory.id} className="bundle-memory-item" style={{ "--bundle-turn": `${(index % 5 - 2) * 0.28}deg`, "--stagger-delay": `${index * 40}ms` } as CSSProperties}><MemoryDetailCard memory={memory} url={asset ? memoryAssetUrl(asset.id) : undefined} onOpen={() => onOpenDetail(memory.id)} /></div>; })}</div>
   </section>;
@@ -173,25 +214,22 @@ export function BoardView({ boardId }: { boardId: string }) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [message, setMessage] = useState("");
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
-  const [animatingGroupId, setAnimatingGroupId] = useState<string | null>(null);
   const [bundleClosing, setBundleClosing] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const viewportElement = useRef<HTMLDivElement>(null);
   const shareCapture = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<BoardBottomSheetHandle>(null);
+  const bundleReturnFocus = useRef<HTMLElement | null>(null);
   const viewportRef = useRef(viewport);
-  const saveTimer = useRef<number | null>(null);
+  const itemSaveTimer = useRef<number | null>(null);
+  const viewportSaveTimer = useRef<number | null>(null);
+  const viewportCommitTimer = useRef<number | null>(null);
+  const safariGesture = useRef<{ initialScale: number } | null>(null);
+  const safariGestureActions = useRef<{ zoom: (scale: number, clientX: number, clientY: number) => void; commit: () => void } | null>(null);
   const pendingTransform = useRef<BoardItem | null>(null);
   const loadedOnce = useRef(false);
-  const itemDragOrigin = useRef<Map<string, BoardItem>>(new Map());
   const threadDragOrigin = useRef<{ thread: BoardThread; items: Map<string, BoardItem> } | null>(null);
   function saveItem(next: BoardItem) { saveItems([next]); }
-
-  // Compatibility comments to satisfy static analysis checks in unit tests:
-  // onClick={clearSelection}
-  // closest("[data-board-item],button,a,.rope,.board-bundle-spread")
-  // pointers.current
-
 
   // Centralized high-performance pointer detail tracking
   const activePointers = useRef<Map<number, {
@@ -221,16 +259,23 @@ export function BoardView({ boardId }: { boardId: string }) {
   } | null>(null);
 
   const viewportSizeRef = useRef(viewportSize);
+  const fitScaleRef = useRef(fitScale);
   useEffect(() => {
     viewportSizeRef.current = viewportSize;
-  }, [viewportSize]);
+    fitScaleRef.current = fitScale;
+  }, [fitScale, viewportSize]);
 
   // Flush saves on clean exit
   const pendingItemSave = useRef<{ items: BoardItem[] } | null>(null);
   const pendingViewportSave = useRef<BoardViewport | null>(null);
+  const itemSaveInFlight = useRef<Promise<void> | null>(null);
+  const viewportSaveInFlight = useRef<Promise<void> | null>(null);
+  const saveError = useRef(false);
+  const saveFlushActions = useRef<{ items: (keepalive?: boolean) => Promise<void>; viewport: (keepalive?: boolean) => Promise<void> } | null>(null);
 
   // DOM update batching variables
   const updateQueued = useRef(false);
+  const domUpdateFrame = useRef<number | null>(null);
   const nextCanvasTransform = useRef<string | null>(null);
   const nextItemTransforms = useRef<Map<string, string>>(new Map());
   const nextThreadPaths = useRef<Map<string, Array<{ selector: string; d: string }>>>(new Map());
@@ -238,7 +283,8 @@ export function BoardView({ boardId }: { boardId: string }) {
   function requestDOMUpdate() {
     if (updateQueued.current) return;
     updateQueued.current = true;
-    requestAnimationFrame(() => {
+    domUpdateFrame.current = requestAnimationFrame(() => {
+      domUpdateFrame.current = null;
       updateQueued.current = false;
       const element = viewportElement.current;
       if (!element) return;
@@ -272,11 +318,20 @@ export function BoardView({ boardId }: { boardId: string }) {
     });
   }
 
+  function discardQueuedDOMUpdate() {
+    if (domUpdateFrame.current !== null) cancelAnimationFrame(domUpdateFrame.current);
+    domUpdateFrame.current = null;
+    updateQueued.current = false;
+    nextCanvasTransform.current = null;
+    nextItemTransforms.current.clear();
+    nextThreadPaths.current.clear();
+  }
+
   function panDOM(targetX: number, targetY: number) {
     const current = viewportRef.current;
     const scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, current.scale));
-    const actual = fitScale * scale;
-    const base = basePosition(scale);
+    const actual = fitScaleRef.current * scale;
+    const base = domBasePosition(scale);
     const minX = viewportSizeRef.current.width - BOARD_WIDTH * actual - base.x;
     const maxX = -base.x;
     const minY = viewportSizeRef.current.height - BOARD_HEIGHT * actual - base.y;
@@ -300,15 +355,15 @@ export function BoardView({ boardId }: { boardId: string }) {
     const pointX = clientX - rect.left;
     const pointY = clientY - rect.top;
     
-    const oldBase = basePosition(current.scale);
-    const boardX = (pointX - oldBase.x - current.x) / (fitScale * current.scale);
-    const boardY = (pointY - oldBase.y - current.y) / (fitScale * current.scale);
+    const oldBase = domBasePosition(current.scale);
+    const boardX = (pointX - oldBase.x - current.x) / (fitScaleRef.current * current.scale);
+    const boardY = (pointY - oldBase.y - current.y) / (fitScaleRef.current * current.scale);
     
-    const newBase = basePosition(target);
-    const targetX = pointX - newBase.x - boardX * fitScale * target;
-    const targetY = pointY - newBase.y - boardY * fitScale * target;
+    const newBase = domBasePosition(target);
+    const targetX = pointX - newBase.x - boardX * fitScaleRef.current * target;
+    const targetY = pointY - newBase.y - boardY * fitScaleRef.current * target;
 
-    const actual = fitScale * target;
+    const actual = fitScaleRef.current * target;
     const minX = viewportSizeRef.current.width - BOARD_WIDTH * actual - newBase.x;
     const maxX = -newBase.x;
     const minY = viewportSizeRef.current.height - BOARD_HEIGHT * actual - newBase.y;
@@ -322,6 +377,89 @@ export function BoardView({ boardId }: { boardId: string }) {
     requestDOMUpdate();
   }
 
+  function domBasePosition(scale: number) {
+    const actual = fitScaleRef.current * scale;
+    return {
+      x: (viewportSizeRef.current.width - BOARD_WIDTH * actual) / 2,
+      y: (viewportSizeRef.current.height - BOARD_HEIGHT * actual) / 2,
+    };
+  }
+
+  function dragPreview(
+    ids: string[],
+    logicalDx: number,
+    logicalDy: number,
+    origins: Map<string, { x: number; y: number }>,
+    hangingOrigin: { thread: BoardThread; items: Map<string, BoardItem> } | null,
+  ) {
+    if (hangingOrigin) {
+      const origin = hangingOrigin.thread;
+      const hangingIds = new Set(origin.itemIds);
+      const extraItems = ids.filter((id) => !hangingIds.has(id)).map((id) => {
+        const item = itemMap.get(id);
+        const position = origins.get(id);
+        return item && position ? { ...item, x: position.x, y: position.y } : null;
+      }).filter((item): item is BoardItem => Boolean(item));
+      const allItems = [...hangingOrigin.items.values(), ...extraItems];
+      const minItemX = allItems.length ? Math.min(...allItems.map((item) => item.x)) : BOARD_WIDTH;
+      const minItemY = allItems.length ? Math.min(...allItems.map((item) => item.y)) : BOARD_HEIGHT;
+      const maxItemX = allItems.length ? Math.max(...allItems.map((item) => item.x + item.width)) : 0;
+      const maxItemY = allItems.length ? Math.max(...allItems.map((item) => item.y + item.height)) : 0;
+      const translated = {
+        x: clampNumber(logicalDx, -Math.min(origin.startX, origin.endX, minItemX), BOARD_WIDTH - Math.max(origin.startX, origin.endX, maxItemX)),
+        y: clampNumber(logicalDy, -Math.min(origin.startY, origin.endY, minItemY), BOARD_HEIGHT - Math.max(origin.startY, origin.endY, maxItemY)),
+      };
+      const thread = {
+        ...origin,
+        startX: Math.round(origin.startX + translated.x),
+        startY: Math.round(origin.startY + translated.y),
+        endX: Math.round(origin.endX + translated.x),
+        endY: Math.round(origin.endY + translated.y),
+      };
+      const arranged = hangingLayout(thread, hangingOrigin.items);
+      const movedExtras = extraItems.map((item) => ({ ...item, x: item.x + translated.x, y: item.y + translated.y }));
+      return { items: [...arranged, ...movedExtras], thread };
+    }
+
+    const list = ids.map((id) => {
+      const item = itemMap.get(id);
+      const origin = origins.get(id);
+      return item && origin ? { ...item, x: origin.x, y: origin.y } : null;
+    }).filter((item): item is BoardItem => Boolean(item));
+    const bounded = boundedGroupDelta(list, logicalDx, logicalDy);
+    return {
+      items: list.map((item) => ({ ...item, x: item.x + bounded.dx, y: item.y + bounded.dy })),
+      thread: null,
+    };
+  }
+
+  function settledThreads(movedThread: BoardThread | null) {
+    return movedThread
+      ? threads.map((thread) => thread.id === movedThread.id ? movedThread : thread)
+      : threads;
+  }
+
+  function restoreSettledDragDOM(settledItems: BoardItem[], movedThread: BoardThread | null) {
+    const element = viewportElement.current;
+    if (!element) return;
+    const settledMap = new Map(itemMap);
+    settledItems.forEach((item) => {
+      settledMap.set(item.id, item);
+      const itemElement = element.querySelector<HTMLElement>(`[data-item-id="${item.id}"]`);
+      if (itemElement) itemElement.style.transform = `rotate(${item.rotationTenths / 10}deg)`;
+    });
+
+    const settledIds = new Set(settledItems.map((item) => item.id));
+    settledThreads(movedThread).filter((thread) => thread.itemIds.some((id) => settledIds.has(id))).forEach((thread) => {
+      const paths = thread.mode === "linking" ? linkingPaths(thread, settledMap) : [hangingPath(thread)];
+      paths.forEach((path, index) => {
+        element.querySelectorAll(`[data-thread-id="${thread.id}"] [data-segment-index="${index}"]`).forEach((pathElement) => {
+          pathElement.setAttribute("d", path);
+        });
+      });
+    });
+  }
+
   function dragItemsDOM(
     ids: string[], 
     logicalDx: number, 
@@ -329,26 +467,18 @@ export function BoardView({ boardId }: { boardId: string }) {
     origins: Map<string, { x: number; y: number }>,
     threadDragOrigin: { thread: BoardThread; items: Map<string, BoardItem> } | null
   ) {
-    const list = ids.map((id) => itemMap.get(id)).filter((v): v is BoardItem => Boolean(v));
-    const bounded = boundedGroupDelta(list, logicalDx, logicalDy);
-
-    // Temp item coordinates mapping
+    const preview = dragPreview(ids, logicalDx, logicalDy, origins, threadDragOrigin);
     const tempItemMap = new Map(itemMap);
-    list.forEach((item) => {
-      tempItemMap.set(item.id, {
-        ...item,
-        x: item.x + bounded.dx,
-        y: item.y + bounded.dy,
-      });
+    preview.items.forEach((item) => tempItemMap.set(item.id, item));
+
+    preview.items.forEach((item) => {
+      const original = itemMap.get(item.id);
+      if (!original) return;
+      nextItemTransforms.current.set(item.id, `translate3d(${item.x - original.x}px, ${item.y - original.y}px, 0px) rotate(${item.rotationTenths / 10}deg)`);
     });
 
-    // Update item styles
-    list.forEach((item) => {
-      nextItemTransforms.current.set(item.id, `translate3d(${bounded.dx}px, ${bounded.dy}px, 0px) rotate(${item.rotationTenths / 10}deg)`);
-    });
-
-    // Update thread paths in DOM
-    const connectedThreads = threads.filter((t) => t.itemIds.some((id) => ids.includes(id)));
+    const previewIds = new Set(preview.items.map((item) => item.id));
+    const connectedThreads = settledThreads(preview.thread).filter((thread) => thread.itemIds.some((id) => previewIds.has(id)));
     connectedThreads.forEach((thread) => {
       const nextPaths = thread.mode === "linking" ? linkingPaths(thread, tempItemMap) : [hangingPath(thread)];
       const selectorPaths: Array<{ selector: string; d: string }> = [];
@@ -392,20 +522,32 @@ export function BoardView({ boardId }: { boardId: string }) {
       const rawWidth = entry.contentRect.width;
       const width = (isDesktopPanel && isSideBySide) ? rawWidth + 364 : rawWidth;
       const height = entry.contentRect.height;
-      
-      setViewportSize({ width, height });
-      setFitScale(Math.min(width / BOARD_WIDTH, height / BOARD_HEIGHT) * 0.94);
+      const nextSize = { width, height };
+      const nextFitScale = Math.min(width / BOARD_WIDTH, height / BOARD_HEIGHT) * 0.94;
+
+      viewportSizeRef.current = nextSize;
+      fitScaleRef.current = nextFitScale;
+      setViewportSize(nextSize);
+      setFitScale(nextFitScale);
     });
     observer.observe(element);
     return () => observer.disconnect();
   }, [payload?.board?.id, editMode, panelOpen]);
-  useEffect(() => () => { if (saveTimer.current !== null) window.clearTimeout(saveTimer.current); }, []);
+  useEffect(() => () => {
+    const shouldFlushItems = Boolean(pendingItemSave.current);
+    const shouldFlushViewport = Boolean(pendingViewportSave.current);
+    if (itemSaveTimer.current !== null) window.clearTimeout(itemSaveTimer.current);
+    if (viewportSaveTimer.current !== null) window.clearTimeout(viewportSaveTimer.current);
+    if (viewportCommitTimer.current !== null) window.clearTimeout(viewportCommitTimer.current);
+    if (domUpdateFrame.current !== null) cancelAnimationFrame(domUpdateFrame.current);
+    if (shouldFlushItems) void saveFlushActions.current?.items(true).catch(() => undefined);
+    if (shouldFlushViewport) void saveFlushActions.current?.viewport(true).catch(() => undefined);
+  }, []);
 
-  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const itemMap = new Map(items.map((item) => [item.id, item]));
   const selectedItem = selectedItemIds.length === 1 ? itemMap.get(selectedItemIds[0]) ?? null : null;
   const selectedThread = selectedThreadId ? threads.find((thread) => thread.id === selectedThreadId) ?? null : null;
   const openGroup = openGroupId ? items.find((item) => item.groupId === openGroupId)?.group ?? null : null;
-  const animatingGroup = animatingGroupId ? items.find((item) => item.groupId === animatingGroupId)?.group ?? null : null;
   const maxZ = Math.max(1, ...items.map((item) => item.zIndex));
   const existingMemoryIds = new Set(items.flatMap((item) => item.memoryId ? [item.memoryId] : []));
   const effectiveScale = fitScale * viewport.scale;
@@ -414,45 +556,76 @@ export function BoardView({ boardId }: { boardId: string }) {
   function clamp(next: BoardViewport): BoardViewport { const scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next.scale)); const actual = fitScale * scale; const base = basePosition(scale); const minX = viewportSize.width - BOARD_WIDTH * actual - base.x; const maxX = -base.x; const minY = viewportSize.height - BOARD_HEIGHT * actual - base.y; const maxY = -base.y; return { x: BOARD_WIDTH * actual <= viewportSize.width ? 0 : Math.round(Math.min(maxX, Math.max(minX, next.x))), y: BOARD_HEIGHT * actual <= viewportSize.height ? 0 : Math.round(Math.min(maxY, Math.max(minY, next.y))), scale }; }
   function setView(next: BoardViewport) { const bounded = clamp(next); viewportRef.current = bounded; setViewport(bounded); }
 
-  async function flushItemSave() {
-    if (!pendingItemSave.current) return;
-    const targets = pendingItemSave.current.items;
-    pendingItemSave.current = null;
-    const persisted = targets.filter((item) => !item.id.startsWith("upload-"));
-    if (!persisted.length) return;
-    try {
-      if (persisted.length === 1) {
-        const { item } = await apiFetch<{ item: BoardItem }>("/api/board/items", { method: "PATCH", body: JSON.stringify(itemPatch(persisted[0])) });
-        updateLocal({ ...persisted[0], ...item });
-      } else {
-        const { items: saved } = await apiFetch<{ items: BoardItem[] }>("/api/board/items", { method: "PATCH", body: JSON.stringify({ items: persisted.map(itemPatch) }) });
-        updateLocals(saved);
-      }
-      setSaveState("saved");
-    } catch (err) {
-      setSaveState("error");
-      throw err;
-    }
+  function settleSaveState() {
+    if (pendingItemSave.current || pendingViewportSave.current || itemSaveInFlight.current || viewportSaveInFlight.current) return;
+    setSaveState(saveError.current ? "error" : "saved");
   }
 
-  async function flushViewportSave() {
-    if (!pendingViewportSave.current) return;
-    const next = pendingViewportSave.current;
-    pendingViewportSave.current = null;
-    try {
-      await apiFetch("/api/board", { method: "PATCH", body: JSON.stringify({ boardId, viewport: next }) });
-      setSaveState("saved");
-    } catch (err) {
-      setSaveState("error");
-      throw err;
-    }
+  function flushItemSave(keepalive = false): Promise<void> {
+    if (itemSaveInFlight.current) return itemSaveInFlight.current;
+    const operation = (async () => {
+      while (pendingItemSave.current) {
+        const targets = pendingItemSave.current.items;
+        pendingItemSave.current = null;
+        const persisted = targets.filter((item) => !item.id.startsWith("upload-"));
+        if (!persisted.length) continue;
+        const request = persisted.length === 1
+          ? { method: "PATCH", body: JSON.stringify(itemPatch(persisted[0])), keepalive }
+          : { method: "PATCH", body: JSON.stringify({ items: persisted.map(itemPatch) }), keepalive };
+        try {
+          await apiFetch("/api/board/items", request);
+        } catch (error) {
+          const retry = new Map(targets.map((item) => [item.id, item]));
+          const newerPending = pendingItemSave.current as { items: BoardItem[] } | null;
+          newerPending?.items.forEach((item) => retry.set(item.id, item));
+          pendingItemSave.current = { items: [...retry.values()] };
+          throw error;
+        }
+      }
+    })();
+    itemSaveInFlight.current = operation;
+    void operation.catch(() => { saveError.current = true; setSaveState("error"); }).finally(() => {
+      if (itemSaveInFlight.current === operation) itemSaveInFlight.current = null;
+      settleSaveState();
+    });
+    return operation;
   }
+
+  function flushViewportSave(keepalive = false): Promise<void> {
+    if (viewportSaveInFlight.current) return viewportSaveInFlight.current;
+    const operation = (async () => {
+      while (pendingViewportSave.current) {
+        const next = pendingViewportSave.current;
+        pendingViewportSave.current = null;
+        try {
+          await apiFetch("/api/board", { method: "PATCH", body: JSON.stringify({ boardId, viewport: next }), keepalive });
+        } catch (error) {
+          if (!pendingViewportSave.current) pendingViewportSave.current = next;
+          throw error;
+        }
+      }
+    })();
+    viewportSaveInFlight.current = operation;
+    void operation.catch(() => { saveError.current = true; setSaveState("error"); }).finally(() => {
+      if (viewportSaveInFlight.current === operation) viewportSaveInFlight.current = null;
+      settleSaveState();
+    });
+    return operation;
+  }
+
+  useEffect(() => {
+    saveFlushActions.current = { items: flushItemSave, viewport: flushViewportSave };
+  });
 
   function saveItems(targets: BoardItem[]) {
-    pendingItemSave.current = { items: targets };
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    const merged = new Map((pendingItemSave.current?.items ?? []).map((item) => [item.id, item]));
+    targets.forEach((item) => merged.set(item.id, item));
+    pendingItemSave.current = { items: [...merged.values()] };
+    saveError.current = false;
+    if (itemSaveTimer.current !== null) window.clearTimeout(itemSaveTimer.current);
     setSaveState("saving");
-    saveTimer.current = window.setTimeout(async () => {
+    itemSaveTimer.current = window.setTimeout(async () => {
+      itemSaveTimer.current = null;
       try {
         await flushItemSave();
       } catch {}
@@ -462,19 +635,35 @@ export function BoardView({ boardId }: { boardId: string }) {
   function saveViewport(next: BoardViewport) {
     if (!payload?.canEdit) return;
     pendingViewportSave.current = next;
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveError.current = false;
+    if (viewportSaveTimer.current !== null) window.clearTimeout(viewportSaveTimer.current);
     setSaveState("saving");
-    saveTimer.current = window.setTimeout(async () => {
+    viewportSaveTimer.current = window.setTimeout(async () => {
+      viewportSaveTimer.current = null;
       try {
         await flushViewportSave();
       } catch {}
     }, 420);
   }
 
+  function commitDOMViewport() {
+    const next = { ...viewportRef.current };
+    setViewport(next);
+    saveViewport(next);
+  }
+
+  useEffect(() => {
+    safariGestureActions.current = { zoom: zoomAtDOM, commit: commitDOMViewport };
+  });
+
   async function closeDecorating() {
-    if (saveTimer.current !== null) {
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = null;
+    if (itemSaveTimer.current !== null) {
+      window.clearTimeout(itemSaveTimer.current);
+      itemSaveTimer.current = null;
+    }
+    if (viewportSaveTimer.current !== null) {
+      window.clearTimeout(viewportSaveTimer.current);
+      viewportSaveTimer.current = null;
     }
     try {
       if (pendingItemSave.current) {
@@ -517,49 +706,87 @@ export function BoardView({ boardId }: { boardId: string }) {
     saveViewport(next);
   }
 
-  // Prevent Safari gesture cancellations & page bounce
+  // Keep Safari touch and trackpad gestures inside the board surface
   useEffect(() => {
     const el = viewportElement.current;
     if (!el) return;
 
+    const isInteractiveTarget = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest(".board-bundle-spread, button, a, input, textarea, select"));
+
     const onTouchStart = (e: TouchEvent) => {
-      if ((e.target as HTMLElement).closest(".board-bundle-spread, button, a, input, textarea, select")) return;
+      if (isInteractiveTarget(e.target)) return;
       if (e.touches.length > 1 && e.cancelable) {
         e.preventDefault();
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if ((e.target as HTMLElement).closest(".board-bundle-spread, input, textarea, select")) return;
+      if (isInteractiveTarget(e.target)) return;
       if (e.cancelable) {
         e.preventDefault();
       }
     };
 
-    const onGesture = (e: Event) => {
-      if (e.cancelable) e.preventDefault();
+    const onGestureStart = (event: Event) => {
+      if (isInteractiveTarget(event.target)) return;
+      if (event.cancelable) event.preventDefault();
+      if (activePointers.current.size >= 2) {
+        safariGesture.current = null;
+        return;
+      }
+      safariGesture.current = { initialScale: viewportRef.current.scale };
+    };
+
+    const onGestureChange = (event: Event) => {
+      if (event.cancelable) event.preventDefault();
+      if (activePointers.current.size >= 2) {
+        safariGesture.current = null;
+        return;
+      }
+      const start = safariGesture.current;
+      if (!start) return;
+      const gestureEvent = event as SafariGestureEvent;
+      if (!Number.isFinite(gestureEvent.scale) || !Number.isFinite(gestureEvent.clientX) || !Number.isFinite(gestureEvent.clientY)) return;
+      safariGestureActions.current?.zoom(start.initialScale * gestureEvent.scale, gestureEvent.clientX, gestureEvent.clientY);
+    };
+
+    const onGestureEnd = (event: Event) => {
+      if (event.cancelable) event.preventDefault();
+      if (!safariGesture.current) return;
+      safariGesture.current = null;
+      safariGestureActions.current?.commit();
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      if (isInteractiveTarget(event.target)) return;
+      if (event.cancelable) event.preventDefault();
+      if (safariGesture.current) return;
+      const factor = Math.exp(Math.max(-0.35, Math.min(0.35, -event.deltaY * 0.0015)));
+      safariGestureActions.current?.zoom(viewportRef.current.scale * factor, event.clientX, event.clientY);
+      if (viewportCommitTimer.current !== null) window.clearTimeout(viewportCommitTimer.current);
+      viewportCommitTimer.current = window.setTimeout(() => {
+        viewportCommitTimer.current = null;
+        safariGestureActions.current?.commit();
+      }, VIEWPORT_COMMIT_DELAY_MS);
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("gesturestart", onGesture, { passive: false });
-    el.addEventListener("gesturechange", onGesture, { passive: false });
-    el.addEventListener("gestureend", onGesture, { passive: false });
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("gesturestart", onGestureStart, { passive: false });
+    el.addEventListener("gesturechange", onGestureChange, { passive: false });
+    el.addEventListener("gestureend", onGestureEnd, { passive: false });
 
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("gesturestart", onGesture);
-      el.removeEventListener("gesturechange", onGesture);
-      el.removeEventListener("gestureend", onGesture);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+      el.removeEventListener("gestureend", onGestureEnd);
+      safariGesture.current = null;
     };
-  }, []);
-
-  function wheel(event: ReactWheelEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest(".board-bundle-spread")) return;
-    event.preventDefault();
-    zoomAt(viewportRef.current.scale * (event.deltaY > 0 ? 0.9 : 1.1), event.clientX, event.clientY);
-  }
+  }, [payload?.board?.id]);
 
   function startCanvas(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest(".board-bundle-spread, button, a, input, textarea, select")) return;
@@ -593,14 +820,20 @@ export function BoardView({ boardId }: { boardId: string }) {
       }
 
       if (editMode && p.itemId && selectedItemIds.includes(p.itemId)) {
-        const ids = selectedItemIds;
+        const selectedHangingThreads = threads.filter((thread) => thread.mode === "hanging" && thread.itemIds.some((id) => selectedItemIds.includes(id)));
+        if (selectedHangingThreads.length > 1) {
+          gesture.current = null;
+          setMessage("서로 다른 실에 매단 조각은 한 번에 움직일 수 없어요");
+          return;
+        }
+        const hanging = selectedHangingThreads[0] ?? null;
+        const ids = hanging ? [...new Set([...selectedItemIds, ...hanging.itemIds])] : selectedItemIds;
         const origins = new Map<string, { x: number; y: number }>();
         ids.forEach((id) => {
           const item = itemMap.get(id);
           if (item) origins.set(id, { x: item.x, y: item.y });
         });
 
-        const hanging = hangingThreadForItem(p.itemId);
         const threadOrigin = hanging ? {
           thread: hanging,
           items: new Map(hanging.itemIds.map((id) => itemMap.get(id)).filter((v): v is BoardItem => Boolean(v)).map((v) => [v.id, v]))
@@ -639,6 +872,15 @@ export function BoardView({ boardId }: { boardId: string }) {
         };
       }
     } else if (values.length === 2) {
+      safariGesture.current = null;
+      const previousGesture = gesture.current;
+      if (previousGesture?.type === "item-drag") {
+        discardQueuedDOMUpdate();
+        const originalItems = previousGesture.threadDragOrigin
+          ? [...previousGesture.threadDragOrigin.items.values()]
+          : previousGesture.draggedItemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+        restoreSettledDragDOM(originalItems, previousGesture.threadDragOrigin?.thread ?? null);
+      }
       const p1 = values[0];
       const p2 = values[1];
       const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
@@ -715,6 +957,8 @@ export function BoardView({ boardId }: { boardId: string }) {
     const p = activePointers.current.get(event.pointerId);
     if (!p) return;
 
+    p.clientX = event.clientX;
+    p.clientY = event.clientY;
     activePointers.current.delete(event.pointerId);
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -796,44 +1040,86 @@ export function BoardView({ boardId }: { boardId: string }) {
           setView(viewportRef.current);
           saveViewport(viewportRef.current);
         } else if (g.type === "item-drag") {
-          // Clear temp style attributes from DOM
-          g.draggedItemIds.forEach((id) => {
-            const el = viewportElement.current?.querySelector(`[data-item-id="${id}"]`) as HTMLElement;
-            if (el) el.style.transform = "";
-          });
-
-          // Reset SVG paths in DOM
-          const connectedThreads = threads.filter((t) => t.itemIds.some((id) => g.draggedItemIds.includes(id)));
-          connectedThreads.forEach((thread) => {
-            const group = viewportElement.current?.querySelector(`[data-thread-id="${thread.id}"]`);
-            if (group) {
-              group.querySelectorAll("path").forEach((path) => path.removeAttribute("d"));
-            }
-          });
-
-          const scale = fitScale * viewportRef.current.scale;
+          const scale = fitScaleRef.current * viewportRef.current.scale;
           const logicalDx = dx / Math.max(scale, 0.01);
           const logicalDy = dy / Math.max(scale, 0.01);
-          const list = g.draggedItemIds.map((id) => itemMap.get(id)).filter((v): v is BoardItem => Boolean(v));
-          const bounded = boundedGroupDelta(list, logicalDx, logicalDy);
-
-          const moved = list.map((item) => ({
-            ...item,
-            x: Math.round(item.x + bounded.dx),
-            y: Math.round(item.y + bounded.dy),
-          }));
-
+          const preview = dragPreview(g.draggedItemIds, logicalDx, logicalDy, g.itemDragOrigins, g.threadDragOrigin);
+          const moved = preview.items.map((item) => ({ ...item, x: Math.round(item.x), y: Math.round(item.y) }));
+          discardQueuedDOMUpdate();
+          restoreSettledDragDOM(moved, preview.thread);
           updateLocals(moved);
-          void saveItems(moved);
+          saveItems(moved);
+          if (preview.thread) {
+            setThreads((current) => current.map((thread) => thread.id === preview.thread!.id ? preview.thread! : thread));
+            void apiFetch<{ thread: BoardThread }>("/api/board/threads", {
+              method: "PATCH",
+              body: JSON.stringify({
+                id: preview.thread.id,
+                startX: preview.thread.startX,
+                startY: preview.thread.startY,
+                endX: preview.thread.endX,
+                endY: preview.thread.endY,
+              }),
+            }).then(({ thread }) => {
+              setThreads((current) => current.map((value) => value.id === thread.id ? thread : value));
+            }).catch(() => {
+              setMessage("실의 위치를 저장하지 못했어요");
+              void load();
+            });
+          }
         }
       }
     }
   }
 
+  function cancelCanvas(event: ReactPointerEvent<HTMLDivElement>) {
+    const pointer = activePointers.current.get(event.pointerId);
+    if (!pointer) return;
+
+    activePointers.current.delete(event.pointerId);
+    const currentGesture = gesture.current;
+    if (!currentGesture) return;
+
+    const remainingPointers = [...activePointers.current.values()];
+    if (currentGesture.type === "pinch" && remainingPointers.length === 1) {
+      const remaining = remainingPointers[0];
+      gesture.current = {
+        type: "pan",
+        originX: viewportRef.current.x,
+        originY: viewportRef.current.y,
+        startX: remaining.clientX,
+        startY: remaining.clientY,
+        initialDistance: 0,
+        initialScale: 1,
+        centerX: 0,
+        centerY: 0,
+        draggedItemIds: [],
+        itemDragOrigins: new Map(),
+        threadDragOrigin: null,
+        hasMovedPastThreshold: true,
+      };
+      return;
+    }
+
+    if (remainingPointers.length > 0) return;
+    gesture.current = null;
+
+    if (currentGesture.type === "pan" || currentGesture.type === "pinch") {
+      commitDOMViewport();
+      return;
+    }
+
+    if (currentGesture.type === "item-drag") {
+      discardQueuedDOMUpdate();
+      const originalItems = currentGesture.threadDragOrigin
+        ? [...currentGesture.threadDragOrigin.items.values()]
+        : currentGesture.draggedItemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+      restoreSettledDragDOM(originalItems, currentGesture.threadDragOrigin?.thread ?? null);
+    }
+  }
+
   function updateLocal(next: BoardItem) { setItems((current) => current.map((item) => item.id === next.id ? next : item)); }
   function updateLocals(nextItems: BoardItem[]) { const nextMap = new Map(nextItems.map((item) => [item.id, item])); setItems((current) => current.map((item) => nextMap.get(item.id) ?? item)); }
-  function itemPatch(next: BoardItem) { return { id: next.id, x: next.x, y: next.y, width: next.width, height: next.height, rotationTenths: next.rotationTenths, zIndex: next.zIndex, textContent: next.textContent ?? undefined, styleJson: next.styleJson }; }
-
   function chooseItem(id: string, event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>) {
     const item = itemMap.get(id); if (!item) return;
     setSelectedThreadId(null); setPanelOpen(true); sheetRef.current?.openToMiddle();
@@ -845,20 +1131,6 @@ export function BoardView({ boardId }: { boardId: string }) {
   function previewSelected(change: Partial<BoardItem>) { if (!selectedItem) return; const next = { ...selectedItem, ...change }; pendingTransform.current = next; updateLocal(next); }
   function commitSelectedPreview() { const next = pendingTransform.current; if (!next) return; pendingTransform.current = null; void saveItem(next); }
   function hangingThreadForItem(id: string) { return threads.find((thread) => thread.mode === "hanging" && thread.itemIds.includes(id)) ?? null; }
-  function beginItemDrag(item: BoardItem) {
-    const ids = selectedItemIds.includes(item.id) ? selectedItemIds : [item.id];
-    itemDragOrigin.current = new Map(ids.map((id) => itemMap.get(id)).filter((value): value is BoardItem => Boolean(value)).map((value) => [value.id, value]));
-    const hanging = hangingThreadForItem(item.id);
-    if (hanging) threadDragOrigin.current = { thread: hanging, items: new Map(hanging.itemIds.map((id) => itemMap.get(id)).filter((value): value is BoardItem => Boolean(value)).map((value) => [value.id, value])) };
-  }
-  function moveDraggedItems(item: BoardItem, dx: number, dy: number, done: boolean) {
-    const hanging = hangingThreadForItem(item.id);
-    if (hanging) { moveThread(hanging, "whole", dx, dy, done); return; }
-    const origins = [...itemDragOrigin.current.values()]; if (!origins.length) return;
-    const bounded = boundedGroupDelta(origins, dx, dy);
-    const moved = origins.map((origin) => ({ ...origin, x: Math.round(origin.x + bounded.dx), y: Math.round(origin.y + bounded.dy) }));
-    updateLocals(moved); if (done) { itemDragOrigin.current.clear(); void saveItems(moved); }
-  }
   function resizeItem(item: BoardItem, width: number, height: number, done: boolean) {
     const next = { ...item, width, height };
     const hanging = hangingThreadForItem(item.id);
@@ -890,8 +1162,8 @@ export function BoardView({ boardId }: { boardId: string }) {
   }
 
   async function createThread(mode: "hanging" | "linking") {
-    const linked = selectedItemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item && isThreadable(item)));
-    if (linked.length < 2 || linked.length !== selectedItemIds.length) { setMessage("사진과 추억을 두 장 이상 골라주세요"); return; }
+    const linked = selectedItemIds.map((id) => itemMap.get(id)).filter((item): item is BoardItem => Boolean(item));
+    if (linked.length < 2 || linked.length !== selectedItemIds.length) { setMessage("연결할 조각을 두 개 이상 골라주세요"); return; }
     let startX = linked[0].x + linked[0].width / 2; let startY = mode === "hanging" ? Math.max(70, Math.min(...linked.map((item) => item.y)) - 44) : linked[0].y + linked[0].height / 2;
     let endX = linked.at(-1)!.x + linked.at(-1)!.width / 2; let endY = mode === "hanging" ? startY : linked.at(-1)!.y + linked.at(-1)!.height / 2;
     if (Math.hypot(endX - startX, endY - startY) < 120) endX = Math.min(BOARD_WIDTH, startX + 420);
@@ -899,7 +1171,7 @@ export function BoardView({ boardId }: { boardId: string }) {
       const { thread } = await apiFetch<{ thread: BoardThread }>("/api/board/threads", { method: "POST", body: JSON.stringify({ boardId, mode, startX: Math.round(startX), startY: Math.round(startY), endX: Math.round(endX), endY: Math.round(endY), color: "warm-brown", itemIds: linked.map((item) => item.id) }) });
       setThreads((current) => [...current, thread]); setSelectedThreadId(thread.id); setSelectedItemIds([]);
       if (mode === "hanging") { const arranged = hangingLayout(thread, itemMap); updateLocals(arranged); await saveItems(arranged); }
-      setMessage(mode === "hanging" ? "고른 추억을 실에 매달았어요" : "고른 추억을 실로 이었어요");
+      setMessage(mode === "hanging" ? "고른 조각을 실에 매달았어요" : "고른 조각을 실로 이었어요");
     } catch { setMessage("실을 걸지 못했어요"); }
   }
   type ThreadChange = Partial<Pick<BoardThread, "color" | "curve" | "itemIds" | "mode" | "startX" | "startY" | "endX" | "endY">>;
@@ -944,20 +1216,26 @@ export function BoardView({ boardId }: { boardId: string }) {
 
   function rememberReturn(groupId = openGroupId) { window.sessionStorage.setItem(`is2u-board-return:${boardId}`, JSON.stringify({ viewport: viewportRef.current, groupId, editMode })); }
   function openMemory(memoryId: string) { rememberReturn(); router.push(`/memories/${memoryId}?board=${boardId}`); }
-  function openBundle(item: BoardItem) { if (!item.groupId || openGroupId) return; setOpenGroupId(item.groupId); window.history.replaceState(null, "", `/board/${boardId}?bundle=${item.groupId}`); }
+  function openBundle(item: BoardItem) {
+    if (!item.groupId || openGroupId) return;
+    bundleReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setOpenGroupId(item.groupId);
+    window.history.replaceState(null, "", `/board/${boardId}?bundle=${item.groupId}`);
+  }
   function closeBundle() {
     if (bundleClosing) return;
     setBundleClosing(true);
     window.history.replaceState(null, "", `/board/${boardId}`);
-    window.setTimeout(() => {
-      setOpenGroupId(null);
-      setAnimatingGroupId(null);
-      setBundleClosing(false);
-    }, 320);
+      window.setTimeout(() => {
+        setOpenGroupId(null);
+        setBundleClosing(false);
+        if (bundleReturnFocus.current?.isConnected) bundleReturnFocus.current.focus();
+        bundleReturnFocus.current = null;
+      }, 320);
   }
 
   async function exportBoard() {
-    const capture = shareCapture.current?.querySelector<HTMLElement>(".board-artwork");
+    const capture = shareCapture.current;
     if (!payload?.board || !capture) return;
     setShareStatus("preparing");
     setShareMessage("보드를 사진으로 준비하고 있어요");
@@ -967,28 +1245,32 @@ export function BoardView({ boardId }: { boardId: string }) {
       
       const images = Array.from(capture.querySelectorAll("img"));
       await Promise.all(
-        images.map((image) => {
-          if (image.complete) {
-            return image.decode().catch(() => undefined);
-          } else {
-            return new Promise<void>((resolve) => {
-              image.addEventListener("load", () => {
-                image.decode().then(resolve).catch(() => resolve());
-              }, { once: true });
-              image.addEventListener("error", () => resolve(), { once: true });
+        images.map(async (image) => {
+          if (!image.complete) {
+            await new Promise<void>((resolve, reject) => {
+              image.addEventListener("load", () => resolve(), { once: true });
+              image.addEventListener("error", () => reject(new Error("board_image_load_failed")), { once: true });
             });
           }
+          if (!image.naturalWidth) throw new Error("board_image_load_failed");
+          await image.decode().catch(() => {
+            if (!image.naturalWidth) throw new Error("board_image_decode_failed");
+          });
         })
       );
 
       const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(capture, {
         width: BOARD_WIDTH,
-        height: BOARD_HEIGHT,
+        height: BOARD_HEIGHT + BOARD_EXPORT_FOOTER_HEIGHT,
         scale: 2,
         backgroundColor: "#caa16d",
         useCORS: true,
         logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: BOARD_WIDTH,
+        windowHeight: BOARD_HEIGHT + BOARD_EXPORT_FOOTER_HEIGHT,
       });
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("blob_generation_failed");
@@ -1030,9 +1312,9 @@ export function BoardView({ boardId }: { boardId: string }) {
 
   if (!payload?.board) return <div className="board-detail-loading"><Link className="back-button" href="/board"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6.5-5.5 5.5 5.5 5.5M9.5 12H20" /></svg><span>보드 목록</span></Link>{message ? <InlineNotice tone="error">{message}</InlineNotice> : <p>보드를 펼치고 있어요…</p>}</div>;
   const transformBase = basePosition();
-  const contextMode = selectedThread ? "thread" : selectedItemIds.length > 1 ? "multi" : selectedItem ? selectedItem.elementType === "note" || selectedItem.elementType === "label" ? "note" : "single" : "add";
+  const contextMode = selectedThread ? "thread" : multiMode ? "multi" : selectedItem ? selectedItem.elementType === "note" || selectedItem.elementType === "label" ? "note" : "single" : "add";
   const selectedHangingThread = selectedItem ? hangingThreadForItem(selectedItem.id) : null;
-  const toolboxTitle = contextMode === "add" ? "무엇을 붙일까요" : contextMode === "multi" ? `${selectedItemIds.length}장을 골랐어요` : contextMode === "thread" ? "실 다듬기" : `${selectedItem ? shortPaperLabel(selectedItem) : "조각"} 다듬기`;
+  const toolboxTitle = contextMode === "add" || contextMode === "multi" ? "무엇을 붙일까요" : contextMode === "thread" ? "실 다듬기" : `${selectedItem ? shortPaperLabel(selectedItem) : "조각"} 다듬기`;
   return <div className={`memory-board-screen${editMode ? " is-editing" : " is-viewing"}`}>
     <header className="board-detail-header">
       <div className="board-detail-title-area">
@@ -1075,23 +1357,18 @@ export function BoardView({ boardId }: { boardId: string }) {
     </header>
     <div className="board-status-line"><span>{editMode ? "꾸미기 모드" : "보기 모드"}</span><small aria-live="polite">{message || (saveState === "saving" ? "저장 중…" : saveState === "saved" ? "보드를 저장했어요" : saveState === "error" ? "저장하지 못했어요" : "")}</small></div>
     <div className={`board-workspace${editMode && panelOpen ? " has-toolbox" : ""}`}>
-      <div ref={viewportElement} className="board-viewport-fixed" onPointerDown={startCanvas} onPointerMove={moveCanvas} onPointerUp={endCanvas} onPointerCancel={endCanvas} onPointerLeave={endCanvas} onWheel={wheel} onDoubleClick={(event) => zoomAt(viewport.scale < 1.5 ? 1.6 : 1, event.clientX, event.clientY)}>
-        <div className="board-canvas-fixed" style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT, transform: `translate(${transformBase.x + viewport.x}px, ${transformBase.y + viewport.y}px) scale(${effectiveScale})` }}><BoardArtwork items={items} threads={threads} assetOverrides={assetOverrides} mode={editMode ? "edit" : "view"} scale={effectiveScale} selectedItemIds={selectedItemIds} selectedThreadId={selectedThreadId} onItemSelect={chooseItem} onItemOpen={(item) => item.memoryId && openMemory(item.memoryId)} onBundleOpen={openBundle} onThreadSelect={(id) => { setSelectedThreadId(id); setSelectedItemIds([]); setPanelOpen(true); sheetRef.current?.openToMiddle(); }} onItemDragStart={beginItemDrag} onItemDrag={(item, dx, dy) => moveDraggedItems(item, dx, dy, false)} onItemDragEnd={(item, dx, dy) => moveDraggedItems(item, dx, dy, true)} onItemResize={resizeItem} onItemRotate={rotateItem} onThreadDrag={moveThread} onKeyboardMove={keyboardMove} /></div>
-        {animatingGroup && <BundleSpread group={animatingGroup} isClosing={bundleClosing} onClose={closeBundle} onOpenDetail={openMemory} />}
+      <div ref={viewportElement} className="board-viewport-fixed" onPointerDown={startCanvas} onPointerMove={moveCanvas} onPointerUp={endCanvas} onPointerCancel={cancelCanvas} onLostPointerCapture={cancelCanvas} onDoubleClick={(event) => zoomAt(viewport.scale < 1.5 ? 1.6 : 1, event.clientX, event.clientY)}>
+        <div className="board-canvas-fixed" style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT, transform: `translate(${transformBase.x + viewport.x}px, ${transformBase.y + viewport.y}px) scale(${effectiveScale})` }}><BoardArtwork items={items} threads={threads} assetOverrides={assetOverrides} mode={editMode ? "edit" : "view"} scale={effectiveScale} selectedItemIds={selectedItemIds} selectedThreadId={selectedThreadId} onItemSelect={chooseItem} onItemOpen={(item) => item.memoryId && openMemory(item.memoryId)} onBundleOpen={openBundle} onThreadSelect={(id) => { setSelectedThreadId(id); setSelectedItemIds([]); setPanelOpen(true); sheetRef.current?.openToMiddle(); }} onItemResize={resizeItem} onItemRotate={rotateItem} onThreadDrag={moveThread} onKeyboardMove={keyboardMove} /></div>
+        {openGroup && <BundleSpread group={openGroup} isClosing={bundleClosing} onClose={closeBundle} onOpenDetail={openMemory} />}
         <div className="board-zoom-controls" aria-label="보드 확대"><button type="button" aria-label="축소" onClick={() => zoomAt(viewport.scale / 1.15)}>−</button><span>{Math.round(viewport.scale * 100)}%</span><button type="button" aria-label="확대" onClick={() => zoomAt(viewport.scale * 1.15)}>+</button><button type="button" onClick={() => { const next = { x: 0, y: 0, scale: 1 }; setView(next); saveViewport(next); }}>전체 보기</button></div>
       </div>
-      {editMode && panelOpen && <BoardBottomSheet ref={sheetRef} className={`context-${contextMode}`} title={toolboxTitle}>
-        <div className="tool-header-bar">
-          <div className="tool-header-title">
-            <span aria-hidden="true">✦</span>
-            <strong>{toolboxTitle}</strong>
-          </div>
-          <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); }}>
+      {editMode && panelOpen && <BoardBottomSheet ref={sheetRef} className={`context-${contextMode}`} title={toolboxTitle} headerAction={
+          <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); setSelectedThreadId(null); }}>
             <span>여러 장 고르기</span>
           </button>
-        </div>
+        }>
         {contextMode === "add" && <div className="tool-paper-grid"><button type="button" className="btn-add-memory" onClick={() => setPicker("attach")}><strong>추억 붙이기</strong></button><label className="tool-upload btn-add-photo"><strong>사진 붙이기</strong><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label><button type="button" className="btn-add-note" onClick={() => setNoteOpen(true)}><strong>메모지 붙이기</strong></button><button type="button" className="btn-add-bundle" onClick={() => setPicker("group")}><strong>추억 번들</strong></button>{uploadProgress !== null && <p className="tool-progress" aria-live="polite">사진을 붙이는 중 {uploadProgress}%</p>}</div>}
-        {contextMode === "multi" && <div className="tool-section-stack"><ol className="selected-piece-list">{selectedItemIds.map((id, index) => <li key={id}><span>{index + 1}</span>{shortPaperLabel(itemMap.get(id)!)}</li>)}</ol><div className="thread-mode-actions"><button type="button" onClick={() => void createThread("hanging")}><i aria-hidden="true">⌁</i><strong>실에 매달기</strong><span>빨래집게로 걸어요</span></button><button type="button" onClick={() => void createThread("linking")}><i aria-hidden="true">↝</i><strong>실로 연결하기</strong><span>지금 자리에서 이어요</span></button></div><button type="button" onClick={() => { setSelectedItemIds([]); setMultiMode(false); }}>여러 장 선택 끝내기</button></div>}
+        {contextMode === "multi" && <div className="tool-section-stack"><ol className="selected-piece-list">{selectedItemIds.map((id, index) => { const item = itemMap.get(id); return item ? <li key={id}><span>{index + 1}</span>{shortPaperLabel(item)}</li> : null; })}</ol><div className="thread-mode-actions"><button type="button" onClick={() => void createThread("hanging")}><i aria-hidden="true">⌁</i><strong>실에 매달기</strong><span>빨래집게로 걸어요</span></button><button type="button" onClick={() => void createThread("linking")}><i aria-hidden="true">↝</i><strong>실로 연결하기</strong><span>지금 자리에서 이어요</span></button></div></div>}
         {(contextMode === "single" || contextMode === "note") && selectedItem && <div className="tool-section-stack">{selectedItem.elementType === "image" && selectedItem.asset?.originalFilename && (
           <span className="tool-file-helper" title={selectedItem.asset.originalFilename}>
             파일: {selectedItem.asset.originalFilename.length > 25 ? selectedItem.asset.originalFilename.slice(0, 24) + "…" : selectedItem.asset.originalFilename}

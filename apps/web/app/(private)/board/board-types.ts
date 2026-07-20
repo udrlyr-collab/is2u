@@ -138,8 +138,3 @@ export function shortPaperLabel(item: BoardItem): string {
   if (item.elementType === "bundle") return `${item.group?.name ?? "추억"} 번들`;
   return item.memory?.title ?? "추억";
 }
-
-export function isThreadable(item: BoardItem): boolean {
-  if (item.elementType === "image") return true;
-  return item.elementType === "memory";
-}
