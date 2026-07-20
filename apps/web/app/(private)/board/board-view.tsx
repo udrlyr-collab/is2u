@@ -296,8 +296,16 @@ export function BoardView({ boardId }: { boardId: string }) {
     try {
       await document.fonts.ready;
       await Promise.all([...capture.querySelectorAll("img")].map((image) => image.complete ? image.decode().catch(() => undefined) : new Promise<void>((resolve) => { image.addEventListener("load", () => resolve(), { once: true }); image.addEventListener("error", () => resolve(), { once: true }); })));
-      const { toBlob } = await import("html-to-image");
-      const blob = await toBlob(capture, { width: BOARD_WIDTH, height: BOARD_HEIGHT, pixelRatio: 2, cacheBust: true, backgroundColor: "#caa16d", skipFonts: false });
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(capture, {
+        width: BOARD_WIDTH,
+        height: BOARD_HEIGHT,
+        scale: 2,
+        backgroundColor: "#caa16d",
+        useCORS: true,
+        logging: false,
+      });
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("capture failed");
       const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
       const filename = `${payload.board.title.replace(/[\\/:*?"<>|]/g, "-")}-${date}.png`; const file = new File([blob], filename, { type: "image/png" });

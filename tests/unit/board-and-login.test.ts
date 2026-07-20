@@ -110,8 +110,8 @@ describe("login, interval inputs and memory boards", () => {
     expect(styles).toContain("object-fit: contain");
     expect(styles).not.toContain("100vw");
     expect(view).toContain("event.clientX, event.clientY");
-    expect(view).toContain('import("html-to-image")');
-    expect(view).toContain("pixelRatio: 2");
+    expect(view).toContain('import("html2canvas")');
+    expect(view).toContain("scale: 2");
     expect(view).toContain("await document.fonts.ready");
     expect(view).toContain("<BoardArtwork");
     expect(list).toContain("<ReadOnlyBoardPreview");
