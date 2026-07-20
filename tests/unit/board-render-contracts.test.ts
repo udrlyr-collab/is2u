@@ -162,6 +162,8 @@ describe("board rendering contracts", () => {
     expect(view).toContain("payload?.board.description && <span>{payload.board.description}</span>");
     expect(styles).toContain(".export-footer-title > strong");
     expect(styles).toContain(".export-footer-title > span");
+    expect(styles).toMatch(/\.export-footer-title\s*\{[^}]*flex:\s*1 1 0/s);
+    expect(styles).toMatch(/\.export-footer-title > strong\s*\{[^}]*max-width:\s*58%/s);
     expect(styles).toMatch(/\.export-footer-title > span\s*\{[^}]*font-weight:\s*350/s);
     expect(styles).toMatch(/\.export-footer-title > strong,\s*\.export-footer-title > span\s*\{[^}]*text-overflow:\s*ellipsis/s);
   });
