@@ -42,7 +42,9 @@ export function linkingPaths(thread: BoardThread, itemMap: Map<string, BoardItem
   return members.slice(0, -1).map((item, index) => {
     const from = itemCenter(item);
     const to = itemCenter(members[index + 1]);
-    const bend = Math.max(-60, Math.min(60, thread.curve / 3));
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const baseSag = Math.max(15, Math.min(60, distance * 0.08));
+    const bend = clamp(thread.curve + baseSag, -160, 160);
     return `M ${from.x} ${from.y} Q ${(from.x + to.x) / 2} ${(from.y + to.y) / 2 + bend} ${to.x} ${to.y}`;
   });
 }

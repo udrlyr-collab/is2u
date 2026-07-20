@@ -222,8 +222,8 @@ h3 { margin-bottom: var(--space-2); }
 .recipient-heading p { margin: 0.25rem 0 0; color: var(--muted-foreground); font-size: 0.79rem; }
 .recipient-sticker { flex: 0 0 auto; padding: 0.36rem 0.55rem 0.28rem; background: var(--sky); color: #405764; font-family: var(--font-body); font-size: 0.72rem; font-weight: 400; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.1); transform: rotate(-1deg); }
 .recipient-1 .recipient-sticker { background: rgb(217 130 122 / 0.48); color: #70413d; transform: rotate(1.5deg); }
-.mission-day { display: grid; gap: 0.9rem; }
-.day-divider { display: flex; align-items: center; gap: 0.7rem; margin: 0; color: var(--muted-foreground); font-family: var(--font-note); font-size: 0.78rem; font-weight: 300; }
+.mission-day { display: grid; gap: 2.2rem; margin-top: 1.8rem; margin-bottom: 2.4rem; }
+.day-divider { display: flex; align-items: center; gap: 0.7rem; margin: 0 0 0.8rem 0; padding-bottom: 0.2rem; color: var(--muted-foreground); font-family: var(--font-note); font-size: 0.78rem; font-weight: 300; }
 .day-divider i { height: 1px; flex: 1; background: repeating-linear-gradient(90deg, #cfbeb0 0 5px, transparent 5px 9px); }
 .day-appointment-stickers { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
 .day-appointment-stickers b, .memory-appointment-sticker { max-width: 13rem; padding: 0.22rem 0.45rem 0.16rem; overflow: hidden; background: rgb(241 213 138 / 0.52); color: #675a3f; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.08); font-family: var(--font-body); font-size: 0.64rem; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; transform: rotate(-0.5deg); }
@@ -657,7 +657,7 @@ h3 { margin-bottom: var(--space-2); }
 .rope-edit-handle { position: absolute; z-index: 3; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; transform: translate(-50%, -50%); }
 .rope-edit-handle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .rope-first-point { position: absolute; z-index: 30; padding: 0.28rem 0.45rem; background: #fff0b7; font-size: 0.66rem; box-shadow: var(--paper-shadow); transform: translate(-50%, -120%); }
-.board-piece { contain: layout style; }
+.board-piece { contain: layout style; container-type: size; }
 .board-piece.selected::after { content: ""; position: absolute; inset: -7px; border: 3px dashed rgb(70 50 40 / 0.64); pointer-events: none; }
 .board-piece.is-clipped { transform-origin: 50% 0; }
 .board-clothespin { position: absolute; z-index: 20; top: -22px; left: 50%; width: 18px; height: 43px; border-radius: 5px 5px 3px 3px; background: linear-gradient(90deg, #b88655 0 43%, #805b3d 44% 55%, #c09160 56%); box-shadow: 2px 2px 0 rgb(70 50 40 / 0.24); transform: translateX(-50%) rotate(-2deg); pointer-events: none; }
@@ -665,8 +665,8 @@ h3 { margin-bottom: var(--space-2); }
 .board-piece-tape { position: absolute; z-index: 15; top: -9px; left: 50%; width: 44%; height: 25px; background: rgb(241 213 138 / 0.72); border-inline: 1px dashed rgb(127 101 60 / 0.2); transform: translateX(-50%) rotate(-1deg); pointer-events: none; }
 .board-free-image { width: 100%; height: 100%; display: block; object-fit: contain; filter: drop-shadow(2px 3px 0 rgb(70 50 40 / 0.18)); }
 .board-image-loading { width: 100%; height: 100%; display: grid; place-items: center; padding: 1rem; background: #f1e8dc; color: var(--muted-foreground); font-size: 0.7rem; }
-.board-free-note { width: 100%; height: 100%; display: grid; place-items: center; padding: 1rem; overflow: hidden; background: #fff0b7; box-shadow: 2px 3px 0 rgb(70 50 40 / 0.14); }
-.board-free-note p { width: 100%; margin: 0; overflow-wrap: anywhere; font-family: var(--font-note); font-size: clamp(0.8rem, 1.5em, 1.2rem); white-space: pre-wrap; }
+.board-free-note { width: 100%; height: 100%; display: grid; place-items: center; padding: 8cqw 8cqh; overflow: hidden; background: #fff0b7; box-shadow: 2px 3px 0 rgb(70 50 40 / 0.14); }
+.board-free-note p { width: 100%; margin: 0; overflow-wrap: anywhere; font-family: var(--font-note); font-size: clamp(0.72rem, 5.5cqw, 2.8rem); line-height: clamp(1.2, 1.2 + 0.05 * (100cqw / 100px), 1.55); white-space: pre-wrap; }
 .color-cream .board-free-note { background: #fff8e8; }
 .color-sky .board-free-note { background: #dfeef4; }
 .color-strawberry .board-free-note { background: #f2d2ce; }
@@ -1064,7 +1064,7 @@ h3 { margin-bottom: var(--space-2); }
 .board-miniature .board-artwork { box-shadow: none; }
 .board-miniature .board-piece { pointer-events: none; }
 .board-miniature .board-thread-layer { pointer-events: none; }
-.board-share-capture { position: fixed; z-index: 80; top: 0; left: 0; width: 1800px; height: 1400px; overflow: hidden; pointer-events: none; }
+.board-share-capture { position: fixed; z-index: -9999; top: -9999px; left: -9999px; width: 1800px; height: 1400px; overflow: hidden; pointer-events: none; }
 .board-share-capture .board-piece { pointer-events: none; }
 
 .board-thread-layer .rope-warm-brown .rope-cord,
@@ -1074,9 +1074,9 @@ h3 { margin-bottom: var(--space-2); }
 .board-thread-layer .rope-muted-red .rope-cord { stroke: #8b684d; }
 .board-thread-layer .rope-cream .rope-cord { stroke: #d8c5a5; }
 .board-thread-layer .rope-strawberry .rope-cord { stroke: #a56f68; }
-.board-thread-layer .rope-sky .rope-cord { stroke: #819fab; }
+.board-thread-layer .rope-sky .rope-cord { stroke: #7099ad; }
 .board-thread-layer .rope-leaf .rope-cord { stroke: #879878; }
-.board-thread-layer .rope-lavender .rope-cord { stroke: #988aa1; }
+.board-thread-layer .rope-lavender .rope-cord { stroke: #8e7da3; }
 .board-thread-layer .rope-dark-brown .rope-cord { stroke: #604433; }
 .board-artwork .rope-edit-handle { z-index: 10001; }
 .group-cream { background: #fff8e8; }
@@ -1210,7 +1210,7 @@ h3 { margin-bottom: var(--space-2); }
 .board-readonly-preview { inset: 0; background: #8a5d3e; }
 
 .board-piece.multi-selected::before, .board-piece.multi-selected::after { content: none; }
-.board-piece.selected, .board-piece.multi-selected { outline: 2px solid rgb(255 248 223 / 0.88); outline-offset: 4px; filter: drop-shadow(2px 4px 0 rgb(70 50 40 / 0.16)); }
+.board-piece.selected, .board-piece.multi-selected { opacity: 1 !important; outline: 2px solid rgb(255 248 223 / 0.88); outline-offset: 4px; filter: drop-shadow(2px 4px 0 rgb(70 50 40 / 0.16)); }
 .board-selection-tape { position: absolute; z-index: 60; top: -13px; right: 12px; min-width: 34px; height: 23px; display: grid; place-items: center; background: #f1d58a; color: #604433; font-size: 12px; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.14); transform: rotate(2deg); pointer-events: none; }
 
 .piece-resize-handle, .piece-rotate-handle { position: absolute; z-index: 90; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: grab; scale: var(--board-handle-inverse-scale, 1); }
@@ -1239,8 +1239,7 @@ h3 { margin-bottom: var(--space-2); }
 .sheet-accessible-actions button { min-height: 38px; padding: 0.3rem 0.45rem; border: 0; background: #fffdf9; color: var(--muted-foreground); box-shadow: 1px 2px 0 rgb(70 50 40 / 0.1); }
 .board-tool-content { min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: pan-y; }
 .board-tool-content input[type="range"] { touch-action: pan-x; }
-.multi-mode-toggle { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.7rem; padding: 0.45rem 0.6rem; border: 1px solid transparent; background: #fffdf9; color: var(--foreground); text-align: left; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.12); }
-.multi-mode-toggle[aria-pressed="true"] { border-color: rgb(96 68 51 / 0.25); background: #f1d58a; box-shadow: inset 1px 2px 0 rgb(70 50 40 / 0.12); }
+
 
 .tool-paper-grid > button, .tool-paper-grid > label, .thread-mode-actions > button, .compact-adjuster button, .thread-curve-controls button, .tool-section-stack > button, .paper-choice-row button, .thread-swatch-list button, .sheet-accessible-actions button { transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease; }
 .tool-paper-grid > button:active, .tool-paper-grid > label:active, .thread-mode-actions > button:active, .compact-adjuster button:active, .thread-curve-controls button:active, .tool-section-stack > button:active, .paper-choice-row button:active, .thread-swatch-list button:active, .sheet-accessible-actions button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgb(70 50 40 / 0.12); }
@@ -1314,4 +1313,517 @@ h3 { margin-bottom: var(--space-2); }
 @media (prefers-reduced-motion: reduce) {
   .board-toolbox { transition-duration: 1ms !important; }
   .bundle-memory-collage > div { transform: none; }
+}
+
+/* ==========================================================================
+   IS2U Board UI Refinements & Bug Fixes
+   ========================================================================== */
+
+/* 1. Header Layout - Prevent Back button, label, and title overlap */
+.board-detail-title-area {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+}
+.board-detail-title-area .back-button {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+/* 2. Structured Wood Frame Border Simulation for html2canvas compatibility */
+.board-wood-frame {
+  position: absolute;
+  z-index: 15000;
+  inset: 0;
+  border: none !important; /* Remove original border-image */
+  box-shadow: none !important;
+  pointer-events: none;
+}
+.board-wood-frame .frame-top,
+.board-wood-frame .frame-bottom,
+.board-wood-frame .frame-left,
+.board-wood-frame .frame-right {
+  position: absolute;
+  background-color: #7a563b;
+  background-image: repeating-linear-gradient(96deg, rgb(255 218 164 / 0.13) 0 3px, transparent 4px 24px),
+                    linear-gradient(180deg, #9a704d, #6b4932 52%, #8b6243);
+  box-shadow: inset 0 0 0 3px rgb(255 220 170 / 0.12),
+              inset 0 0 12px rgb(55 33 22 / 0.36),
+              3px 4px 0 rgb(62 42 30 / 0.18);
+}
+.board-wood-frame .frame-top,
+.board-wood-frame .frame-bottom {
+  left: 0;
+  right: 0;
+  height: 28px;
+}
+.board-wood-frame .frame-top {
+  top: 0;
+}
+.board-wood-frame .frame-bottom {
+  bottom: 0;
+  transform: rotate(180deg);
+}
+.board-wood-frame .frame-left,
+.board-wood-frame .frame-right {
+  top: 28px;
+  bottom: 28px;
+  width: 28px;
+}
+.board-wood-frame .frame-left {
+  left: 0;
+}
+.board-wood-frame .frame-right {
+  right: 0;
+  transform: rotate(180deg);
+}
+
+/* Wood grain scanlines overlay */
+.board-wood-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  background: repeating-linear-gradient(8deg, transparent 0 19px, rgb(255 245 218 / 0.18) 20px 21px, transparent 22px 43px);
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+/* 3. Image wrappers to prevent stretching in html2canvas */
+.board-image-container {
+  overflow: hidden;
+  border-radius: inherit;
+}
+.board-image-bg {
+  border-radius: inherit;
+}
+
+/* 4. Desktop Sidebar Decorating Panel Layout (Sticky, Non-overlapping) */
+@media (min-width: 1100px) and (min-height: 501px) {
+  .board-workspace.has-toolbox {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 340px !important;
+    align-items: start !important;
+    gap: 1.5rem !important;
+  }
+  
+  .board-workspace.has-toolbox .board-viewport-fixed {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .board-toolbox {
+    position: sticky !important;
+    top: 0.5rem !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: 340px !important;
+    height: clamp(32rem, 72dvh, 58rem) !important;
+    max-height: none !important;
+    transform: none !important;
+    clip-path: none !important;
+    box-shadow: 3px 4px 0 rgb(70 50 40 / 0.16) !important;
+    border-radius: 8px 11px 7px 10px !important;
+    margin: 0 !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+  }
+
+  .board-toolbox .board-tool-content {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* Medium PC screens: stack vertically below the board so they don't overlap */
+@media (min-width: 740px) and (max-width: 1099px) and (min-height: 501px) {
+  .board-workspace.has-toolbox {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+  
+  .board-workspace.has-toolbox .board-viewport-fixed {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .board-toolbox {
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin-top: 1rem !important;
+    transform: none !important;
+    box-shadow: 3px 4px 0 rgb(70 50 40 / 0.16) !important;
+    border-radius: 8px 11px 7px 10px !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+  }
+
+  .board-toolbox .board-tool-content {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    overflow-y: visible !important;
+  }
+}
+
+/* 5. Decorating panel menu buttons (Text focused, no ugly color cards) */
+.tool-paper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+.tool-paper-grid > button, .tool-upload {
+  min-width: 0;
+  min-height: 4.6rem;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  border: 1px dashed var(--border) !important;
+  background: var(--paper) !important;
+  color: var(--foreground) !important;
+  text-align: center;
+  box-shadow: var(--paper-shadow) !important;
+  cursor: pointer;
+  transform: rotate(-0.5deg);
+  transition: transform var(--transition-quick), box-shadow var(--transition-quick), background-color var(--transition-quick);
+}
+.tool-paper-grid > :nth-child(2n) {
+  transform: rotate(0.6deg);
+}
+.tool-paper-grid > button:hover, .tool-upload:hover {
+  background-color: #fffdf0 !important;
+  border-color: #9c796c !important;
+  transform: translateY(-1px) rotate(0deg) !important;
+  box-shadow: var(--paper-shadow-strong) !important;
+}
+.tool-paper-grid > button:active, .tool-upload:active {
+  background-color: var(--butter) !important;
+  transform: translateY(1px) !important;
+  box-shadow: inset 1px 1px 0 rgb(70 50 40 / 0.1) !important;
+}
+.tool-paper-grid strong {
+  font-family: var(--font-display);
+  font-size: 0.82rem !important;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* 6. Multi-select button pressed state styling */
+.multi-mode-toggle[aria-pressed="true"] {
+  border-color: #9c796c !important;
+  background-color: var(--butter) !important;
+  color: var(--foreground) !important;
+  font-weight: 600;
+  transform: translateY(1px) !important;
+  box-shadow: inset 1px 1.5px 0 rgb(70 50 40 / 0.15), 0px 1px 0 rgb(70 50 40 / 0.05) !important;
+}
+.multi-mode-toggle[aria-pressed="true"]::after {
+  content: "✓";
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #74554a;
+}
+
+/* 7. Thread color swatches grid styling (SVG curves & clothespins) */
+.thread-swatch-list {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.6rem !important;
+  padding: 0.4rem 0.2rem !important;
+}
+.thread-swatch-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.thread-swatch-paper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.8 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  border: 1px dashed var(--border);
+  box-shadow: var(--paper-shadow);
+  padding: 0.3rem;
+  transform: rotate(-0.5deg);
+  transition: border-color var(--transition-quick), background-color var(--transition-quick), box-shadow var(--transition-quick);
+}
+.thread-swatch-item:nth-child(even) .thread-swatch-paper {
+  transform: rotate(0.6deg);
+}
+.thread-swatch-item.is-selected .thread-swatch-paper {
+  background: var(--butter) !important;
+  border: 1px solid #9c796c !important;
+  box-shadow: var(--paper-shadow-strong) !important;
+  transform: translateY(1px) rotate(0deg) !important;
+}
+.thread-swatch-label {
+  font-family: var(--font-note) !important;
+  font-size: 0.72rem !important;
+  color: var(--muted-foreground) !important;
+  font-weight: 500;
+  display: block;
+  text-align: center;
+}
+.thread-swatch-item.is-selected .thread-swatch-label {
+  color: var(--foreground) !important;
+  font-weight: 600 !important;
+}
+.swatch-clothespin {
+  position: absolute;
+  top: -10px;
+  left: calc(50% - 5px);
+  width: 10px;
+  height: 22px;
+  background: #cbbba6;
+  border: 1px solid #9c8a75;
+  box-shadow: 1px 1px 0 rgb(70 50 40 / 0.18);
+  z-index: 5;
+}
+.swatch-clothespin::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 2px;
+  width: 4px;
+  height: 1px;
+  background: #756758;
+}
+.thread-preview-svg {
+  overflow: visible;
+  width: 100%;
+}
+
+/* 8. Memory Bundle Open/Close Stagger Animations */
+.board-bundle-spread {
+  pointer-events: auto !important;
+}
+.bundle-spread-backdrop {
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.board-bundle-spread.is-opening .bundle-spread-backdrop {
+  opacity: 1;
+}
+.board-bundle-spread.is-closing .bundle-spread-backdrop {
+  opacity: 0;
+}
+.board-bundle-spread > header, .bundle-spread-note {
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: opacity 280ms ease, transform 280ms ease;
+}
+.board-bundle-spread.is-opening > header, .board-bundle-spread.is-opening .bundle-spread-note {
+  opacity: 1;
+  transform: translateY(0);
+}
+.board-bundle-spread.is-closing > header, .board-bundle-spread.is-closing .bundle-spread-note {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+.bundle-memory-item {
+  opacity: 0;
+  transform: scale(0.85) rotate(0deg) translateY(40px);
+  transition: opacity 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--stagger-delay, 0ms);
+}
+.board-bundle-spread.is-opening .bundle-memory-item {
+  opacity: 1;
+  transform: scale(1) rotate(var(--bundle-turn)) translateY(0);
+}
+.board-bundle-spread.is-closing .bundle-memory-item {
+  opacity: 0;
+  transform: scale(0.85) rotate(0deg) translateY(40px);
+  transition-delay: 0ms !important;
+  transition-duration: 220ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bundle-spread-backdrop,
+  .board-bundle-spread > header,
+  .bundle-spread-note,
+  .bundle-memory-item {
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* 9. Post-it Button Ornaments & Colors */
+.btn-add-memory {
+  background-color: #fdfaf0 !important; /* Cream Butter tone */
+  border: 1px dashed #9c8a75 !important;
+  box-shadow: 2px 3px 0 rgb(70 50 40 / 0.12) !important;
+  position: relative;
+}
+.btn-add-memory::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: calc(50% - 5px);
+  width: 10px;
+  height: 10px;
+  background-color: #d8827a; /* Red pin head */
+  border-radius: 50%;
+  box-shadow: 1px 1px 0 rgb(70 50 40 / 0.2);
+}
+
+.btn-add-photo {
+  background-color: #f0f7fd !important; /* Pale sky/blue tone */
+  border: 1px dashed #7e9bb0 !important;
+  box-shadow: 2px 3px 0 rgb(70 50 40 / 0.12) !important;
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+.btn-add-photo::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: calc(50% - 15px);
+  width: 30px;
+  height: 8px;
+  background-color: rgba(220, 210, 200, 0.6); /* Tape top */
+  transform: rotate(-2deg);
+}
+
+.btn-add-note {
+  background-color: #fefde0 !important; /* Yellow notebook paper tone */
+  border: 1px dashed #b5a459 !important;
+  box-shadow: 2px 3px 0 rgb(70 50 40 / 0.12) !important;
+}
+
+.btn-add-bundle {
+  background-color: #faf0fd !important; /* Lavender/purple stacked papers tone */
+  border: 1px dashed #ab8eb5 !important;
+  box-shadow: 3px 4px 0 rgb(70 50 40 / 0.1) !important;
+  position: relative;
+}
+.btn-add-bundle::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  right: -2px;
+  bottom: -2px;
+  border: 1px dashed #ab8eb5;
+  background: rgba(250, 240, 253, 0.5);
+  z-index: -1;
+  border-radius: inherit;
+}
+
+/* 10. Multi-select header and toggle styles */
+.tool-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  width: 100%;
+}
+.selection-count-label {
+  font-family: var(--font-note);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #705244;
+}
+.multi-mode-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--muted-foreground);
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 1px 1px 0 rgb(70 50 40 / 0.08);
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.multi-mode-toggle::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.multi-mode-toggle:hover {
+  background-color: #fffdf0;
+  color: var(--foreground);
+}
+.multi-mode-toggle[aria-pressed="true"]::before {
+  background: #a45d59;
+  border-color: #a45d59;
+}
+.multi-mode-toggle[aria-pressed="true"] {
+  border-color: #9c796c !important;
+  background-color: #f7ede2 !important;
+  color: #705244 !important;
+  font-weight: 600;
+  box-shadow: inset 1px 1.5px 2.5px rgb(70 50 40 / 0.12) !important;
+  transform: translateY(1px);
+}
+
+/* 11. Header Title Truncation */
+.board-toolbox > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 52px;
+  width: 100%;
+}
+.board-toolbox > header > div {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+.board-toolbox > header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  display: block;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #554035;
+}
+
+/* Helper small text for photo filename */
+.tool-file-helper {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  margin-top: -0.25rem;
+  margin-bottom: 0.4rem;
+  font-family: var(--font-note);
+  text-align: left;
 }

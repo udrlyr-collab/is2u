@@ -14,5 +14,5 @@ $env:CLOUDFLARE_ACCOUNT_ID = $cf.CLOUDFLARE_ACCOUNT_ID
 $env:CLOUDFLARE_API_TOKEN = $cf.CLOUDFLARE_API_TOKEN
 $zone = Invoke-RestMethod -Method Get -Uri "https://api.cloudflare.com/client/v4/zones/$($cf.CLOUDFLARE_ZONE_ID)" -Headers @{ Authorization = "Bearer $($cf.CLOUDFLARE_API_TOKEN)" }
 if ($zone.result.status -ne 'active') { Write-Output "WORKER_SKIPPED_ZONE_STATUS=$($zone.result.status)"; exit 2 }
-$server.MEDIA_TOKEN_SECRET | pnpm --dir apps/media-worker exec wrangler secret put MEDIA_TOKEN_SECRET | Out-Null
-pnpm --dir apps/media-worker exec wrangler deploy
+$server.MEDIA_TOKEN_SECRET | npx --package=pnpm pnpm --dir apps/media-worker exec wrangler secret put MEDIA_TOKEN_SECRET | Out-Null
+npx --package=pnpm pnpm --dir apps/media-worker exec wrangler deploy

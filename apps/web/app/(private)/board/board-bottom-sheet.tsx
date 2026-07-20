@@ -143,27 +143,31 @@ export const BoardBottomSheet = forwardRef<BoardBottomSheetHandle, {
     tabIndex={-1}
     style={{ "--sheet-expanded-height": "760px", "--sheet-translate": "0px" } as CSSProperties}
   >
-    <div
-      className="board-sheet-grab-zone"
-      role="slider"
-      aria-label="꾸미기 패널 높이"
-      aria-valuemin={0}
-      aria-valuemax={2}
-      aria-valuenow={STAGES.indexOf(stage)}
-      aria-valuetext={STAGE_LABEL[stage]}
-      tabIndex={0}
-      onKeyDown={keyDown}
-      onPointerDown={(event) => begin(event)}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={cancel}
-    ><i aria-hidden="true" /></div>
+    {mobile && (
+      <div
+        className="board-sheet-grab-zone"
+        role="slider"
+        aria-label="꾸미기 패널 높이"
+        aria-valuemin={0}
+        aria-valuemax={2}
+        aria-valuenow={STAGES.indexOf(stage)}
+        aria-valuetext={STAGE_LABEL[stage]}
+        tabIndex={0}
+        onKeyDown={keyDown}
+        onPointerDown={(event) => begin(event)}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={cancel}
+      ><i aria-hidden="true" /></div>
+    )}
     <header>
       <div><span aria-hidden="true">✦</span><strong>{title}</strong></div>
-      <div className="sheet-accessible-actions">
-        <button type="button" onClick={() => applyStage("expanded", false)} aria-label="꾸미기 패널 펼치기">펼치기</button>
-        <button type="button" onClick={() => applyStage("collapsed", false)} aria-label="꾸미기 패널 접기">접기</button>
-      </div>
+      {mobile && (
+        <div className="sheet-accessible-actions">
+          <button type="button" onClick={() => applyStage("expanded", false)} aria-label="꾸미기 패널 펼치기">펼치기</button>
+          <button type="button" onClick={() => applyStage("collapsed", false)} aria-label="꾸미기 패널 접기">접기</button>
+        </div>
+      )}
     </header>
     <div
       ref={contentRef}
@@ -174,4 +178,5 @@ export const BoardBottomSheet = forwardRef<BoardBottomSheetHandle, {
       onPointerCancel={cancel}
     >{children}</div>
   </aside>;
+
 });

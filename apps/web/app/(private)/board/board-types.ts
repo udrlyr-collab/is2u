@@ -1,5 +1,7 @@
 import type { MemoryType } from "@is2u/core/types";
 
+export type BoardMode = "view" | "edit" | "thumbnail" | "export";
+
 export type BoardAssetVariant = {
   id: string;
   role: "preview" | "thumbnail" | "poster";
@@ -93,9 +95,9 @@ export const THREAD_COLORS = [
   { id: "warm-brown", label: "따뜻한 갈색", value: "#8b684d" },
   { id: "cream", label: "크림", value: "#d8c5a5" },
   { id: "strawberry", label: "말린 딸기", value: "#a56f68" },
-  { id: "sky", label: "하늘", value: "#819fab" },
+  { id: "sky", label: "하늘", value: "#7099ad" },
   { id: "leaf", label: "잎사귀", value: "#879878" },
-  { id: "lavender", label: "연보라", value: "#988aa1" },
+  { id: "lavender", label: "연보라", value: "#8e7da3" },
   { id: "dark-brown", label: "짙은 갈색", value: "#604433" },
 ] as const;
 
@@ -119,6 +121,20 @@ export function paperLabel(item: BoardItem): string {
   if (item.elementType === "note" || item.elementType === "label") return item.textContent ?? "메모";
   if (item.elementType === "sticker") return `${item.styleJson.sticker ?? "장식"} 스티커`;
   if (item.elementType === "image") return item.asset?.originalFilename ?? "사진";
+  if (item.elementType === "bundle") return `${item.group?.name ?? "추억"} 번들`;
+  return item.memory?.title ?? "추억";
+}
+
+export function shortPaperLabel(item: BoardItem): string {
+  if (item.elementType === "note" || item.elementType === "label") {
+    const text = item.textContent ?? "메모";
+    return text.length > 12 ? text.slice(0, 11) + "…" : text;
+  }
+  if (item.elementType === "sticker") return `${item.styleJson.sticker ?? "장식"} 스티커`;
+  if (item.elementType === "image") {
+    if (item.memory?.title) return item.memory.title;
+    return "붙인 사진";
+  }
   if (item.elementType === "bundle") return `${item.group?.name ?? "추억"} 번들`;
   return item.memory?.title ?? "추억";
 }
