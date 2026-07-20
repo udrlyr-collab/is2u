@@ -1223,6 +1223,7 @@ h3 { margin-bottom: var(--space-2); }
 .rope.mode-linking .rope-cord { stroke-width: 4; stroke-dasharray: 1 0; }
 .rope.mode-linking .rope-shadow { stroke-width: 7; }
 .rope-direct-handle, .rope-edit-handle { position: absolute; translate: -50% -50%; scale: var(--board-handle-inverse-scale, 1); width: 44px; height: 44px; padding: 0; border: 0; background: transparent; touch-action: none; }
+.rope-direct-handle { z-index: 10002; pointer-events: auto; }
 .rope-direct-handle::after { content: ""; position: absolute; inset: 14px; border-radius: 50%; background: #8b684d; border: 2px solid #f1d58a; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.18); }
 .rope-handle-whole::after { inset: 12px; background: #f1d58a; border-color: #77543d; }
 .rope.mode-linking.selected .rope-cord, .rope.mode-hanging.selected .rope-cord { filter: drop-shadow(0 0 2px rgb(255 248 223 / 0.9)); }
