@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { hangingPath, hangingPoint, itemCenter, linkingPaths } from "./board-geometry";
-import { normalizeBoardPieceStyle } from "../../../lib/board-style";
+import { BOARD_STICKERS, normalizeBoardPieceStyle } from "../../../lib/board-style";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -224,7 +224,7 @@ type PieceProps = {
   multiSelected?: boolean;
   clipped?: boolean;
   scale?: number;
-  onSelect?: (event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>) => void;
+  onSelect?: (event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) => void;
   onOpen?: () => void;
   onOpenBundle?: () => void;
   onResize?: (item: BoardItem, width: number, height: number, done: boolean) => void;
@@ -247,7 +247,7 @@ function BoardPiece({ item, url, mode = "view", selected = false, multiSelected 
       event.preventDefault(); const amount = event.shiftKey ? 10 : 1;
       onKeyboardMove?.(item, event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0, event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0); return;
     }
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (editMode) onSelect?.(event as never); else if (item.elementType === "bundle") onOpenBundle?.(); else onOpen?.(); }
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); if (editMode) onSelect?.(event); else if (item.elementType === "bundle") onOpenBundle?.(); else onOpen?.(); }
   }
   function resizeStart(event: ReactPointerEvent<HTMLButtonElement>) {
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
@@ -276,16 +276,17 @@ function BoardPiece({ item, url, mode = "view", selected = false, multiSelected 
 
   const memory = item.memory ?? item.group?.representative ?? null;
   const style = normalizeBoardPieceStyle(item.styleJson, item.elementType);
-  const effectiveAttachment = clipped ? "clip" : style.attachment ?? "pin";
+  const sticker = BOARD_STICKERS.find((candidate) => candidate.id === style.sticker) ?? BOARD_STICKERS[0];
+  const effectiveAttachment = clipped ? "clip" : style.attachment ?? (item.elementType === "sticker" ? "none" : "pin");
   const actionable = !isDecorative && (editMode || item.elementType === "bundle" || Boolean(item.memoryId));
-  return <div data-board-item="true" data-item-id={item.id} className={`board-piece piece-${item.elementType} color-${style.color ?? "cream"} attach-${effectiveAttachment} shadow-${style.shadow ?? "soft"}${selected ? " selected" : ""}${multiSelected ? " multi-selected" : ""}${editMode ? " editable" : ""}${clipped ? " is-clipped" : ""}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, zIndex: item.zIndex, transform: `rotate(${item.rotationTenths / 10}deg)` }} tabIndex={actionable ? 0 : -1} role={actionable ? "button" : undefined} aria-label={actionable ? editMode ? `${paperLabel(item)} 선택됨 ${selected || multiSelected ? "예" : "아니오"}` : item.elementType === "bundle" ? `${paperLabel(item)} 열기` : `${paperLabel(item)} 자세히 보기` : undefined} onDragStart={(event) => event.preventDefault()} onKeyDown={keyDown}>
+  return <div data-board-item="true" data-item-id={item.id} className={`board-piece piece-${item.elementType} color-${style.color ?? "cream"}${style.color ? " has-piece-color" : ""} attach-${effectiveAttachment} shadow-${style.shadow ?? "soft"}${selected ? " selected" : ""}${multiSelected ? " multi-selected" : ""}${editMode ? " editable" : ""}${clipped ? " is-clipped" : ""}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, zIndex: item.zIndex, transform: `rotate(${item.rotationTenths / 10}deg)` }} tabIndex={actionable ? 0 : -1} role={actionable ? "button" : undefined} aria-label={actionable ? editMode ? `${paperLabel(item)} 선택됨 ${selected || multiSelected ? "예" : "아니오"}` : item.elementType === "bundle" ? `${paperLabel(item)} 열기` : `${paperLabel(item)} 자세히 보기` : undefined} onDragStart={(event) => event.preventDefault()} onKeyDown={keyDown}>
     {clipped ? <span className="board-clothespin" aria-hidden="true"><i /></span> : effectiveAttachment === "tape" ? <span className="board-piece-tape" aria-hidden="true" /> : effectiveAttachment === "pin" ? <span className="board-pin" aria-hidden="true" /> : null}
     {multiSelected && <span className="board-selection-tape" aria-hidden="true">✓</span>}
     {mode === "export" && style.shadow !== "none" && item.elementType !== "sticker" && <span className={`board-export-piece-shadow shape-${style.shape ?? "note"}`} aria-hidden="true" />}
     <div className="board-piece-surface">
       {item.elementType === "image" && (url ? <div className="board-image-container" style={{ width: "100%", height: "100%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}><span className="board-object-ground" aria-hidden="true" /><div className="board-image-bg" style={{ width: "100%", height: "100%", backgroundImage: `url(${url})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }} /><img className="board-free-image" src={url} alt={item.asset?.originalFilename ?? "보드 사진"} loading={eager ? "eager" : "lazy"} draggable={false} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} /></div> : <span className="board-image-loading">사진을 펼치고 있어요</span>)}
       {(item.elementType === "note" || item.elementType === "label") && <BoardNotePaper shape={style.shape} textStyle={style.textStyle}>{item.textContent}</BoardNotePaper>}
-      {item.elementType === "sticker" && <div className={`board-free-sticker sticker-${style.sticker ?? "sparkle"}`} aria-hidden="true">{style.sticker === "heart" ? "♡" : style.sticker === "star" ? "☆" : style.sticker === "flower" ? "✿" : style.sticker === "arrow" ? "↝" : style.sticker === "tape" ? "▱" : "✦"}</div>}
+      {item.elementType === "sticker" && <div className={`board-free-sticker sticker-${sticker.id}`} aria-hidden="true">{sticker.glyph}</div>}
       {item.elementType === "bundle" && item.group && <div className={`board-group-stack group-${item.group.style}`}><i aria-hidden="true" /><i aria-hidden="true" />{memory && <MemoryVisual memory={memory} url={url} eager={eager} />}<div className="board-group-label"><strong>{item.group.name}</strong><small>{item.group.count}개의 추억</small></div></div>}
       {item.elementType === "memory" && item.memory && <MemoryVisual memory={item.memory} url={url} eager={eager} />}
     </div>
@@ -312,7 +313,7 @@ type ArtworkProps = {
   scale?: number;
   selectedItemIds?: string[];
   selectedThreadId?: string | null;
-  onItemSelect?: (id: string, event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>) => void;
+  onItemSelect?: (id: string, event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) => void;
   onItemOpen?: (item: BoardItem) => void;
   onBundleOpen?: (item: BoardItem) => void;
   onThreadSelect?: (id: string) => void;

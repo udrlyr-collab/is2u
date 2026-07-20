@@ -90,6 +90,7 @@ export const PAPER_COLORS = [
   { id: "strawberry", label: "딸기", value: "#f2d2ce" },
   { id: "leaf", label: "잎사귀", value: "#e1ead9" },
   { id: "lavender", label: "연보라", value: "#e8e0ee" },
+  { id: "rose", label: "장미", value: "#f7dcd7" },
 ] as const;
 
 export const THREAD_COLORS = [

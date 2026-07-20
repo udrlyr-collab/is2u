@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { normalizeMissionIntervalInputs } from "@is2u/core/mission-interval";
-import { boundedGroupDelta, hangingPoint, linkingPaths } from "../../apps/web/app/(private)/board/board-geometry";
+import { boundedGroupDelta, hangingLayout, hangingPoint, linkingPaths } from "../../apps/web/app/(private)/board/board-geometry";
 import type { BoardItem, BoardThread } from "../../apps/web/app/(private)/board/board-types";
 
 describe("login, interval inputs and memory boards", () => {
@@ -25,6 +25,41 @@ describe("login, interval inputs and memory boards", () => {
     expect(normalizeMissionIntervalInputs("abc", "90", { min: 40, max: 90 }, "min")).toEqual({ min: 40, max: 90 });
     expect(normalizeMissionIntervalInputs("100", "60", { min: 40, max: 90 }, "min")).toEqual({ min: 100, max: 100 });
     expect(normalizeMissionIntervalInputs("100", "60", { min: 40, max: 90 }, "max")).toEqual({ min: 60, max: 60 });
+  });
+
+  it("keeps each piece angle while a hanging thread is moved or reshaped", () => {
+    const first = { id: "first", x: 20, y: 30, width: 120, height: 90, rotationTenths: -37, styleJson: { attachment: "tape" } } as BoardItem;
+    const second = { id: "second", x: 400, y: 300, width: 160, height: 110, rotationTenths: 54, styleJson: { attachment: "pin" } } as BoardItem;
+    const itemMap = new Map([[first.id, first], [second.id, second]]);
+    const before = { itemIds: [first.id, second.id], startX: 100, startY: 90, endX: 800, endY: 130, curve: 40 } as BoardThread;
+    const after = { ...before, startX: 260, startY: 240, endX: 1200, endY: 310, curve: 150 };
+
+    const firstLayout = hangingLayout(before, itemMap);
+    const movedLayout = hangingLayout(after, new Map(firstLayout.map((item) => [item.id, item])));
+
+    expect(movedLayout.map((item) => item.rotationTenths)).toEqual([-37, 54]);
+    expect(movedLayout.every((item) => item.styleJson.attachment === "clip")).toBe(true);
+    expect(movedLayout.map((item) => [item.x, item.y])).not.toEqual(firstLayout.map((item) => [item.x, item.y]));
+  });
+
+  it("allows one memory to appear more than once while retaining other board uniqueness rules", async () => {
+    const [schema, migration, view] = await Promise.all([
+      readFile("packages/db/src/schema.ts", "utf8"),
+      readFile("packages/db/migrations/0018_soft_lady_bullseye.sql", "utf8"),
+      readFile("apps/web/app/(private)/board/board-view.tsx", "utf8"),
+    ]);
+
+    expect(schema).toContain('index("board_items_memory_idx").on(table.boardId, table.memoryId)');
+    expect(schema).not.toContain('uniqueIndex("board_items_memory_uidx")');
+    expect(schema).toContain('uniqueIndex("board_items_group_uidx")');
+    expect(schema).toContain('uniqueIndex("board_items_asset_uidx")');
+    expect(migration).toContain('DROP INDEX "board_items_memory_uidx"');
+    expect(migration).toContain('CREATE INDEX "board_items_memory_idx"');
+    expect(view).toContain("usedMemoryCounts");
+    expect(view).toContain("memory-used-label");
+    expect(view).not.toContain("disabled={attached}");
+    expect(view).toContain("attachRequestIds");
+    expect(view).toContain("idempotencyKey");
   });
 
   it("verifies credentials before applying failed-attempt blocking and confirms the saved session", async () => {

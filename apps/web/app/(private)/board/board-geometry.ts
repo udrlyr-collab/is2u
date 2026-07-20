@@ -27,7 +27,6 @@ export function hangingLayout(thread: BoardThread, itemMap: Map<string, BoardIte
       ...item,
       x: Math.round(clamp(point.x - item.width / 2, 0, BOARD_WIDTH - item.width)),
       y: Math.round(clamp(point.y + 28, 0, BOARD_HEIGHT - item.height)),
-      rotationTenths: Math.round(clamp(point.angle * 4, -60, 60)),
       styleJson: { ...item.styleJson, attachment: "clip" },
     }];
   });

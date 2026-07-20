@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   BOARD_PAPER_SHAPE_IDS,
   BOARD_PAPER_SHAPES,
+  BOARD_STICKER_IDS,
+  BOARD_STICKERS,
   BOARD_STORED_PAPER_SHAPE_IDS,
   BOARD_TEXT_STYLE_IDS,
   BOARD_TEXT_STYLES,
@@ -223,6 +225,51 @@ describe("board paper style contracts", () => {
       expect(dimensions.height).toBeGreaterThanOrEqual(60);
     }
     expect(boardPaperDimensions("label", "scribble")).toEqual(boardPaperDimensions("label", "title"));
+    expect(boardPaperDimensions("sticker")).toEqual({ width: 150, height: 150 });
+  });
+
+  it("uses one sticker catalog across creation, validation, rendering and editing", async () => {
+    const [view, renderer, controls, route] = await Promise.all([
+      readFile(VIEW_PATH, "utf8"),
+      readFile(RENDERER_PATH, "utf8"),
+      readFile("apps/web/app/(private)/board/board-controls.tsx", "utf8"),
+      readFile("apps/web/app/api/board/items/route.ts", "utf8"),
+    ]);
+
+    expect(BOARD_STICKERS).toHaveLength(12);
+    expect(BOARD_STICKER_IDS).toEqual(BOARD_STICKERS.map(({ id }) => id));
+    expect(new Set(BOARD_STICKER_IDS).size).toBe(BOARD_STICKER_IDS.length);
+    expect(route).toContain('"memory", "image", "note", "label", "sticker"');
+    expect(route).toContain("z.enum(BOARD_STICKER_IDS)");
+    expect(route).toContain("idempotencyKey: z.uuid().optional()");
+    expect(renderer).toContain("BOARD_STICKERS.find");
+    expect(controls).toContain("BOARD_STICKERS.map");
+    expect(view).toContain("<StickerDialog");
+    expect(view).toContain("<StickerPicker");
+  });
+
+  it("scales memory decorations and exposes visual attachment and memory theme controls", async () => {
+    const [view, controls, renderer, styles] = await Promise.all([
+      readFile(VIEW_PATH, "utf8"),
+      readFile("apps/web/app/(private)/board/board-controls.tsx", "utf8"),
+      readFile(RENDERER_PATH, "utf8"),
+      readFile(STYLES_PATH, "utf8"),
+    ]);
+
+    expect(controls).toContain('role="radiogroup" aria-label="붙이는 방법"');
+    expect(controls).toContain("attachment-choice-preview");
+    expect(controls).toContain('event.key === "ArrowRight"');
+    expect(controls).toContain("tabIndex={value === option.id ? 0 : -1}");
+    expect(view).toContain("추억 분위기");
+    expect(view).toContain("usePaperDialogFocus");
+    expect(view).toContain('event.key === "Escape"');
+    expect(view).toContain("applyItemSelection");
+    expect(view).toContain("enteredByShift && next.length > 1");
+    expect(renderer).toContain('style.color ? " has-piece-color"');
+    expect(styles).toContain(".piece-memory.has-piece-color.color-butter");
+    expect(styles).toContain(".piece-memory .board-pin");
+    expect(styles).toContain(".piece-bundle .board-group-label strong");
+    expect(styles).toContain("cqw");
   });
 });
 

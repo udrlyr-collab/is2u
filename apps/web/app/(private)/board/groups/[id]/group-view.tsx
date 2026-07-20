@@ -7,6 +7,7 @@ import { DetailBackLink, DetailTopline } from "../../../../../components/detail-
 import { Button, Field, InlineNotice, Input, Select, Textarea } from "../../../../../components/ui";
 import { PaperConfirmDialog } from "../../../../../components/paper-dialog";
 import { apiFetch } from "../../../../../lib/client";
+import { PaperSwatches } from "../../board-controls";
 
 type Asset = { id: string; role: "preview" | "thumbnail" | "poster"; mimeType: string };
 type Memory = { id: string; type: MemoryType; title: string; text: string | null; emotion: string | null; firstPinnedAt: string; author: { displayName: string; roleLabel: string }; dateEvent: { id: string; title: string } | null; assets: Asset[] };
@@ -109,9 +110,20 @@ export function GroupView({ id }: { id: string }) {
 
   return <div className={`board-group-sheet group-${style}`}>
     <DetailTopline back={<DetailBackLink href="/board" label="보드로" ariaLabel="보드 목록으로 돌아가기" />} label="MEMORY BUNDLE" />
-    <header>{editing ? <Field label="번들 이름"><Input maxLength={30} value={name} onChange={(event) => setName(event.target.value)} /></Field> : <h1>{payload.group.name}</h1>}{!editing && payload.group.note && <p>{payload.group.note}</p>}</header>
+    {!editing && <header><h1>{payload.group.name}</h1>{payload.group.note && <p>{payload.group.note}</p>}</header>}
     {message && <InlineNotice>{message}</InlineNotice>}
-    {editing && <section className="group-edit-fields"><Field label="짧은 메모"><Textarea maxLength={200} rows={3} value={note} onChange={(event) => setNote(event.target.value)} /></Field><Field label="종이 분위기"><Select value={style} onChange={(event) => setStyle(event.target.value)}><option value="cream">크림</option><option value="butter">버터</option><option value="sky">하늘</option><option value="strawberry">딸기</option><option value="leaf">잎사귀</option><option value="lavender">연보라</option></Select></Field><Field label="대표 추억"><Select value={memoryIds.includes(representative) ? representative : memoryIds[0]} onChange={(event) => setRepresentative(event.target.value)}>{ordered.map((memory) => <option key={memory.id} value={memory.id}>{memory.title}</option>)}</Select></Field></section>}
+    {editing && <section className="group-edit-fields" aria-label="추억 번들 꾸미기">
+      <div className="group-edit-copy-fields">
+        <div><Field label="번들 이름"><Input className="bundle-name-input" maxLength={30} value={name} onChange={(event) => setName(event.target.value)} /></Field><small>{name.length}/30</small></div>
+        <div><Field label="짧은 메모"><Textarea className="bundle-note-input" maxLength={200} rows={3} value={note} onChange={(event) => setNote(event.target.value)} /></Field><small>{note.length}/200</small></div>
+      </div>
+      <div className="group-edit-style-fields">
+        <span className="tool-field-label">종이 분위기</span>
+        <PaperSwatches value={style} onChange={setStyle} />
+        <div className={`board-bundle-cover-preview group-${style}`} aria-label="번들 표지 미리보기"><i aria-hidden="true" /><i aria-hidden="true" /><strong>{name.trim() || "우리의 추억 번들"}</strong><p>{note.trim() || "함께 묶어둘 짧은 메모"}</p><small>{memoryIds.length}개의 추억</small></div>
+      </div>
+      <Field label="대표 추억"><Select value={memoryIds.includes(representative) ? representative : memoryIds[0]} onChange={(event) => setRepresentative(event.target.value)}>{ordered.map((memory) => <option key={memory.id} value={memory.id}>{memory.title}</option>)}</Select></Field>
+    </section>}
     <section className="group-memory-timeline">
       {ordered.map((memory, index) => { const asset = primaryAsset(memory); return <article key={memory.id}>
         <Link href={`/memories/${memory.id}`}><div className="group-memory-preview">{asset && urls[asset.id] ? <img src={urls[asset.id]} alt="" /> : <span aria-hidden="true">{memory.type === "emotion" ? "✦" : memory.type === "audio" ? "⌁" : "▧"}</span>}</div><div><h2>{memory.title}</h2>{memory.text && <p>{memory.text}</p>}{memory.emotion && <p>{memory.emotion}</p>}<small>{dateFormatter.format(new Date(memory.firstPinnedAt))} · {memory.author.displayName}</small>{memory.dateEvent && <b>{memory.dateEvent.title}</b>}</div></Link>

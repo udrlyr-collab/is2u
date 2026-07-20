@@ -1,10 +1,29 @@
 export const BOARD_PAPER_SHAPE_IDS = ["note", "speech", "title", "date", "caption"] as const;
 export const BOARD_STORED_PAPER_SHAPE_IDS = [...BOARD_PAPER_SHAPE_IDS, "scribble"] as const;
 export const BOARD_TEXT_STYLE_IDS = ["default", "scribble"] as const;
+export const BOARD_STICKERS = [
+  { id: "sparkle", label: "반짝이", glyph: "✦" },
+  { id: "heart", label: "하트", glyph: "♡" },
+  { id: "star", label: "별", glyph: "☆" },
+  { id: "flower", label: "꽃", glyph: "✿" },
+  { id: "moon", label: "달", glyph: "☾" },
+  { id: "sun", label: "햇살", glyph: "☼" },
+  { id: "music", label: "노래", glyph: "♫" },
+  { id: "smile", label: "미소", glyph: "☺" },
+  { id: "clover", label: "클로버", glyph: "♧" },
+  { id: "arrow", label: "화살표", glyph: "↝" },
+  { id: "tape", label: "테이프", glyph: "▱" },
+  { id: "bow", label: "리본", glyph: "⋈" },
+] as const;
+export const BOARD_STICKER_IDS = BOARD_STICKERS.map((sticker) => sticker.id) as [
+  (typeof BOARD_STICKERS)[number]["id"],
+  ...(typeof BOARD_STICKERS)[number]["id"][],
+];
 
 export type BoardPaperShape = (typeof BOARD_PAPER_SHAPE_IDS)[number];
 export type BoardStoredPaperShape = (typeof BOARD_STORED_PAPER_SHAPE_IDS)[number];
 export type BoardTextStyle = (typeof BOARD_TEXT_STYLE_IDS)[number];
+export type BoardStickerId = (typeof BOARD_STICKERS)[number]["id"];
 export type BoardStyleElementType = "memory" | "image" | "note" | "label" | "sticker" | "bundle";
 
 export type BoardPaperShapeDefinition = {
@@ -102,6 +121,7 @@ export function boardPaperDimensions(
   elementType: BoardStyleElementType | string,
   shape?: BoardStoredPaperShape | string,
 ): { width: number; height: number } {
+  if (elementType === "sticker") return { width: 150, height: 150 };
   const normalized = normalizeBoardPieceStyle(shape ? { shape } : undefined, elementType);
   const definition = BOARD_PAPER_SHAPES.find((candidate) => candidate.id === normalized.shape);
   return definition ? { width: definition.width, height: definition.height } : { width: 240, height: 190 };

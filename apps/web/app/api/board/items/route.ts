@@ -7,6 +7,7 @@ import { getServerEnv } from "@is2u/core/env";
 import { getMediaR2 } from "@is2u/core/r2";
 import { BOARD_HEIGHT, BOARD_WIDTH, requireOwnBoard, requireVisibleMemory } from "../../../../lib/board";
 import {
+  BOARD_STICKER_IDS,
   BOARD_STORED_PAPER_SHAPE_IDS,
   BOARD_TEXT_STYLE_IDS,
   boardPaperDimensions,
@@ -15,18 +16,19 @@ import {
 import { requireCsrf, requireSession } from "../../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../../lib/http";
 
-const elementTypes = ["memory", "image", "note", "label"] as const;
+const elementTypes = ["memory", "image", "note", "label", "sticker"] as const;
 const safeText = z.string().trim().max(500).refine((value) => !/[<>\u0000-\u001f\u007f]/u.test(value), "일반 문자만 입력해 주세요");
 const styleSchema = z.object({
-  color: z.enum(["butter", "cream", "sky", "strawberry", "leaf", "lavender"]).optional(),
+  color: z.enum(["butter", "cream", "sky", "strawberry", "leaf", "lavender", "rose"]).optional(),
   attachment: z.enum(["pin", "tape", "clip", "none"]).optional(),
   shape: z.enum(BOARD_STORED_PAPER_SHAPE_IDS).optional(),
   textStyle: z.enum(BOARD_TEXT_STYLE_IDS).optional(),
-  sticker: z.enum(["heart", "star", "flower", "arrow", "tape", "sparkle"]).optional(),
+  sticker: z.enum(BOARD_STICKER_IDS).optional(),
   shadow: z.enum(["none", "soft", "firm"]).optional(),
 }).strict();
 
 const createSchema = z.object({
+  idempotencyKey: z.uuid().optional(),
   boardId: z.uuid(),
   elementType: z.enum(elementTypes).default("memory"),
   memoryId: z.uuid().optional(),
@@ -76,9 +78,14 @@ export const POST = withApiErrors(async (request: Request) => {
   const zIndex = Number(top?.value ?? 0) + 1;
   const image = input.elementType === "image";
   const styleJson = normalizeBoardPieceStyle(input.styleJson, input.elementType);
+  if (input.elementType === "sticker") {
+    styleJson.sticker ??= "sparkle";
+    styleJson.attachment = "none";
+  }
   const dimensions = boardPaperDimensions(input.elementType, styleJson.shape);
   try {
     const [item] = await getDb().insert(boardItems).values({
+      ...(input.idempotencyKey ? { id: input.idempotencyKey } : {}),
       boardId: board.id,
       memoryId: input.memoryId ?? null,
       assetId: input.assetId ?? null,
@@ -94,7 +101,11 @@ export const POST = withApiErrors(async (request: Request) => {
     }).returning();
     return json({ item }, 201);
   } catch (error) {
-    if ((error as { code?: string }).code === "23505") throw new HttpError(409, "이미 이 보드에 붙여둔 추억이에요");
+    if ((error as { code?: string }).code === "23505" && input.idempotencyKey) {
+      const [existing] = await getDb().select().from(boardItems).where(and(eq(boardItems.id, input.idempotencyKey), eq(boardItems.boardId, board.id))).limit(1);
+      if (existing && existing.elementType === input.elementType && existing.memoryId === (input.memoryId ?? null)) return json({ item: existing });
+    }
+    if ((error as { code?: string }).code === "23505") throw new HttpError(409, "이미 이 보드에 붙여둔 조각이에요");
     throw error;
   }
 });

@@ -275,7 +275,7 @@ export const boardItems = pgTable("board_items", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex("board_items_memory_uidx").on(table.boardId, table.memoryId),
+  index("board_items_memory_idx").on(table.boardId, table.memoryId),
   uniqueIndex("board_items_group_uidx").on(table.boardId, table.groupId),
   uniqueIndex("board_items_asset_uidx").on(table.boardId, table.assetId),
   index("board_items_board_z_idx").on(table.boardId, table.zIndex),
