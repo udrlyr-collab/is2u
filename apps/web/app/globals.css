@@ -1282,7 +1282,7 @@ h3 { margin-bottom: var(--space-2); }
   .bundle-memory-collage { grid-template-columns: repeat(2, minmax(14rem, 1fr)); }
 }
 
-@media (max-width: 739px) {
+@media (max-width: 739px), (max-height: 500px) {
   .board-toolbox { top: auto; right: 0.55rem; bottom: calc(5.5rem + env(safe-area-inset-bottom)); left: 0.55rem; width: auto; height: var(--sheet-expanded-height); max-height: none; grid-template-rows: 44px 52px minmax(0, 1fr); border-radius: 13px 13px 5px 5px; transform: translateY(var(--sheet-translate)); clip-path: inset(0 0 var(--sheet-translate) 0); transition: transform 190ms ease-out, clip-path 190ms ease-out; will-change: transform, clip-path; contain: layout paint; }
   .board-toolbox[data-sheet-dragging="true"] { transition: none; }
   .board-sheet-grab-zone { display: grid; min-height: 44px; place-items: center; border: 0; background: transparent; touch-action: none; cursor: ns-resize; }

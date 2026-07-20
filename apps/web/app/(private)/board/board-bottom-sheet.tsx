@@ -11,12 +11,13 @@ export type BoardBottomSheetHandle = {
 
 const STAGE_LABEL: Record<SheetStage, string> = { collapsed: "접힘", middle: "중간", expanded: "펼침" };
 const STAGES: SheetStage[] = ["collapsed", "middle", "expanded"];
+const MOBILE_SHEET_QUERY = "(max-width: 739px), (max-height: 500px)";
 
 function stageHeights(viewportHeight: number) {
-  const available = Math.max(360, viewportHeight - 88);
+  const available = Math.max(220, viewportHeight - 88);
   return {
     collapsed: 96,
-    middle: Math.round(Math.min(available * 0.42, 390)),
+    middle: Math.round(Math.max(148, Math.min(available * 0.42, 390))),
     expanded: Math.round(Math.min(available * 0.88, available - 12)),
   };
 }
@@ -43,7 +44,7 @@ export const BoardBottomSheet = forwardRef<BoardBottomSheetHandle, {
     stageRef.current = next;
     setStageState(next);
     const element = rootRef.current;
-    if (element && window.matchMedia("(max-width: 739px)").matches) {
+    if (element && window.matchMedia(MOBILE_SHEET_QUERY).matches) {
       const heights = measurements();
       element.style.setProperty("--sheet-expanded-height", `${heights.expanded}px`);
       element.style.setProperty("--sheet-translate", `${heights.expanded - heights[next]}px`);
@@ -60,7 +61,7 @@ export const BoardBottomSheet = forwardRef<BoardBottomSheetHandle, {
   }), [applyStage]);
 
   useEffect(() => {
-    const query = window.matchMedia("(max-width: 739px)");
+    const query = window.matchMedia(MOBILE_SHEET_QUERY);
     const sync = () => { setMobile(query.matches); if (query.matches) applyStage(stageRef.current, false); };
     sync(); query.addEventListener("change", sync);
     const viewport = window.visualViewport;
