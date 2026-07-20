@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { MemoryType } from "@is2u/core/types";
+import { DetailBackLink, DetailTopline } from "../../../../../components/detail-topline";
 import { Button, Field, InlineNotice, Input, Select, Textarea } from "../../../../../components/ui";
 import { PaperConfirmDialog } from "../../../../../components/paper-dialog";
 import { apiFetch } from "../../../../../lib/client";
@@ -103,12 +104,12 @@ export function GroupView({ id }: { id: string }) {
     catch { setMessage("그룹을 떼어내지 못했어요"); setBusy(false); setConfirmDelete(false); }
   }
 
-  if (!payload) return <div className="board-group-sheet"><Link className="back-button" href="/board">← 보드로</Link>{message ? <InlineNotice tone="error">{message}</InlineNotice> : <p>그룹을 펼치고 있어요…</p>}</div>;
+  if (!payload) return <div className="board-group-sheet"><DetailTopline back={<DetailBackLink href="/board" label="보드로" ariaLabel="보드 목록으로 돌아가기" />} label="MEMORY BUNDLE" />{message ? <InlineNotice tone="error">{message}</InlineNotice> : <p>그룹을 펼치고 있어요…</p>}</div>;
   const ordered = memoryIds.map((memoryId) => (editing ? allMemories : payload.memories).find((memory) => memory.id === memoryId)).filter((memory): memory is Memory => Boolean(memory));
 
   return <div className={`board-group-sheet group-${style}`}>
-    <Link className="back-button" href="/board">← 보드로</Link>
-    <header><p className="paper-label">MEMORY BUNDLE</p>{editing ? <Field label="번들 이름"><Input maxLength={30} value={name} onChange={(event) => setName(event.target.value)} /></Field> : <h1>{payload.group.name}</h1>}{!editing && payload.group.note && <p>{payload.group.note}</p>}</header>
+    <DetailTopline back={<DetailBackLink href="/board" label="보드로" ariaLabel="보드 목록으로 돌아가기" />} label="MEMORY BUNDLE" />
+    <header>{editing ? <Field label="번들 이름"><Input maxLength={30} value={name} onChange={(event) => setName(event.target.value)} /></Field> : <h1>{payload.group.name}</h1>}{!editing && payload.group.note && <p>{payload.group.note}</p>}</header>
     {message && <InlineNotice>{message}</InlineNotice>}
     {editing && <section className="group-edit-fields"><Field label="짧은 메모"><Textarea maxLength={200} rows={3} value={note} onChange={(event) => setNote(event.target.value)} /></Field><Field label="종이 분위기"><Select value={style} onChange={(event) => setStyle(event.target.value)}><option value="cream">크림</option><option value="butter">버터</option><option value="sky">하늘</option><option value="strawberry">딸기</option><option value="leaf">잎사귀</option><option value="lavender">연보라</option></Select></Field><Field label="대표 추억"><Select value={memoryIds.includes(representative) ? representative : memoryIds[0]} onChange={(event) => setRepresentative(event.target.value)}>{ordered.map((memory) => <option key={memory.id} value={memory.id}>{memory.title}</option>)}</Select></Field></section>}
     <section className="group-memory-timeline">

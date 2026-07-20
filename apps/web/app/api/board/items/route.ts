@@ -6,6 +6,12 @@ import { boardAssets, boardItems, memoryBoards } from "@is2u/db/schema";
 import { getServerEnv } from "@is2u/core/env";
 import { getMediaR2 } from "@is2u/core/r2";
 import { BOARD_HEIGHT, BOARD_WIDTH, requireOwnBoard, requireVisibleMemory } from "../../../../lib/board";
+import {
+  BOARD_STORED_PAPER_SHAPE_IDS,
+  BOARD_TEXT_STYLE_IDS,
+  boardPaperDimensions,
+  normalizeBoardPieceStyle,
+} from "../../../../lib/board-style";
 import { requireCsrf, requireSession } from "../../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../../lib/http";
 
@@ -14,7 +20,8 @@ const safeText = z.string().trim().max(500).refine((value) => !/[<>\u0000-\u001f
 const styleSchema = z.object({
   color: z.enum(["butter", "cream", "sky", "strawberry", "leaf", "lavender"]).optional(),
   attachment: z.enum(["pin", "tape", "clip", "none"]).optional(),
-  shape: z.enum(["note", "speech", "title", "scribble", "date", "caption"]).optional(),
+  shape: z.enum(BOARD_STORED_PAPER_SHAPE_IDS).optional(),
+  textStyle: z.enum(BOARD_TEXT_STYLE_IDS).optional(),
   sticker: z.enum(["heart", "star", "flower", "arrow", "tape", "sparkle"]).optional(),
   shadow: z.enum(["none", "soft", "firm"]).optional(),
 }).strict();
@@ -68,6 +75,8 @@ export const POST = withApiErrors(async (request: Request) => {
   const [top] = await getDb().select({ value: max(boardItems.zIndex) }).from(boardItems).where(eq(boardItems.boardId, board.id));
   const zIndex = Number(top?.value ?? 0) + 1;
   const image = input.elementType === "image";
+  const styleJson = normalizeBoardPieceStyle(input.styleJson, input.elementType);
+  const dimensions = boardPaperDimensions(input.elementType, styleJson.shape);
   try {
     const [item] = await getDb().insert(boardItems).values({
       boardId: board.id,
@@ -75,11 +84,11 @@ export const POST = withApiErrors(async (request: Request) => {
       assetId: input.assetId ?? null,
       elementType: input.elementType,
       textContent: input.textContent ?? null,
-      styleJson: input.styleJson,
+      styleJson,
       x: Math.min(BOARD_WIDTH - 80, Math.max(0, input.x ?? 180 + (zIndex % 5) * 44)),
       y: Math.min(BOARD_HEIGHT - 60, Math.max(0, input.y ?? 180 + (zIndex % 4) * 42)),
-      width: image ? 300 : 240,
-      height: image ? 240 : 190,
+      width: image ? 300 : dimensions.width,
+      height: image ? 240 : dimensions.height,
       rotationTenths: ((zIndex % 5) - 2) * 4,
       zIndex,
     }).returning();
@@ -120,7 +129,7 @@ export const PATCH = withApiErrors(async (request: Request) => {
           ...(input.rotationTenths !== undefined ? { rotationTenths: input.rotationTenths } : {}),
           ...(input.zIndex !== undefined ? { zIndex: input.zIndex } : {}),
           ...(input.textContent !== undefined ? { textContent: input.textContent } : {}),
-          ...(input.styleJson !== undefined ? { styleJson: input.styleJson } : {}),
+          ...(input.styleJson !== undefined ? { styleJson: normalizeBoardPieceStyle(input.styleJson, current.elementType) } : {}),
           updatedAt: new Date(),
         }).where(and(eq(boardItems.id, current.id), eq(boardItems.boardId, boardId))).returning();
         results.push(item);
@@ -142,7 +151,7 @@ export const PATCH = withApiErrors(async (request: Request) => {
     ...(input.rotationTenths !== undefined ? { rotationTenths: input.rotationTenths } : {}),
     ...(input.zIndex !== undefined ? { zIndex: input.zIndex } : {}),
     ...(input.textContent !== undefined ? { textContent: input.textContent } : {}),
-    ...(input.styleJson !== undefined ? { styleJson: input.styleJson } : {}),
+    ...(input.styleJson !== undefined ? { styleJson: normalizeBoardPieceStyle(input.styleJson, current.elementType) } : {}),
     updatedAt: new Date(),
   }).where(and(eq(boardItems.id, current.id), eq(boardItems.boardId, current.boardId))).returning();
   await getDb().update(memoryBoards).set({ updatedAt: new Date() }).where(eq(memoryBoards.id, current.boardId));

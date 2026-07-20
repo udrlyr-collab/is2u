@@ -159,12 +159,15 @@ describe("login, interval inputs and memory boards", () => {
     expect(styles).toContain("height: 1500px");
     expect(styles).toContain("flex: 0 0 1400px");
     expect(styles).toContain("font-family: var(--font-logo)");
-    expect(styles).toContain("filter: none !important");
+    expect(renderer).toContain('className="board-piece-surface"');
+    expect(renderer).toContain('className="board-object-ground"');
+    expect(styles).toContain(".board-piece.shadow-firm > .board-piece-surface");
     expect(boardRoute).toContain("loadBoardArtwork");
     expect(boardContent).toContain("requireVisibleBoard");
     expect(mediaContent).toContain("canAccessMemory");
     expect(view).toContain("URL.createObjectURL(file)");
-    expect(memoryPage).toContain('label={boardId ? "보드로 돌아가기"');
+    expect(memoryPage).toContain('label={boardId ? "보드로" : "추억으로"}');
+    expect(memoryPage).toContain('ariaLabel={boardId ? "보드로 돌아가기" : "추억 목록으로 돌아가기"}');
     expect(memoryPage).toContain("returnBoardId={boardId}");
   });
 

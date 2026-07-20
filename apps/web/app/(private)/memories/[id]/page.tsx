@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BackButton } from "../../../../components/back-button";
+import { DetailTopline } from "../../../../components/detail-topline";
 import { MemoryDetailView } from "./memory-detail-view";
 
 export const metadata: Metadata = { title: "추억 자세히 보기" };
@@ -9,5 +10,5 @@ export default async function MemoryDetailPage({ params, searchParams }: { param
   const { board } = await searchParams;
   const boardId = board && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(board) ? board : undefined;
   const fallback = boardId ? `/board/${boardId}` : "/home";
-  return <main className="page page-detail"><BackButton fallback={fallback} label={boardId ? "보드로 돌아가기" : "추억으로 돌아가기"} /><MemoryDetailView id={id} returnBoardId={boardId} /></main>;
+  return <main className="page page-detail"><DetailTopline back={<BackButton fallback={fallback} label={boardId ? "보드로" : "추억으로"} ariaLabel={boardId ? "보드로 돌아가기" : "추억 목록으로 돌아가기"} />} label="OUR LITTLE MEMORIES" /><MemoryDetailView id={id} returnBoardId={boardId} /></main>;
 }

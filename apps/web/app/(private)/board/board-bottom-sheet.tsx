@@ -11,7 +11,7 @@ export type BoardBottomSheetHandle = {
 
 const STAGE_LABEL: Record<SheetStage, string> = { collapsed: "접힘", middle: "중간", expanded: "펼침" };
 const STAGES: SheetStage[] = ["collapsed", "middle", "expanded"];
-const MOBILE_SHEET_QUERY = "(max-width: 739px), (max-height: 500px)";
+const MOBILE_SHEET_QUERY = "(max-width: 739px), (max-height: 500px) and (pointer: coarse)";
 
 function stageHeights(viewportHeight: number) {
   const available = Math.max(220, viewportHeight - 88);

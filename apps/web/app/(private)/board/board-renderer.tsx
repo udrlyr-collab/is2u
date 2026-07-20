@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { hangingPath, hangingPoint, itemCenter, linkingPaths } from "./board-geometry";
+import { normalizeBoardPieceStyle } from "../../../lib/board-style";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -15,6 +16,68 @@ import {
 } from "./board-types";
 
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" });
+
+function BoardSurface() {
+  const id = useId().replaceAll(":", "");
+  const corkPattern = `cork-${id}`;
+  const corkLight = `cork-light-${id}`;
+  return <svg className="board-surface" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} width={BOARD_WIDTH} height={BOARD_HEIGHT} preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id={corkLight} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#d7b47e" />
+        <stop offset="0.48" stopColor="#cba36d" />
+        <stop offset="1" stopColor="#b98b58" />
+      </linearGradient>
+      <pattern id={corkPattern} width="74" height="62" patternUnits="userSpaceOnUse">
+        <rect width="74" height="62" fill={`url(#${corkLight})`} />
+        <circle cx="10" cy="9" r="2.2" fill="#7c4d2f" opacity="0.28" />
+        <circle cx="29" cy="23" r="2.8" fill="#f4dcae" opacity="0.34" />
+        <circle cx="57" cy="13" r="1.6" fill="#7b4b2f" opacity="0.23" />
+        <circle cx="66" cy="49" r="2.4" fill="#8b5634" opacity="0.2" />
+        <circle cx="22" cy="52" r="1.8" fill="#f5deb0" opacity="0.26" />
+        <path d="M2 35c13-5 24 4 38-1M39 47c9-4 18-2 30-8M20 15c8 2 15 1 25-3" fill="none" stroke="#7b4d31" strokeWidth="1.2" strokeLinecap="round" opacity="0.18" />
+        <path d="M5 55c11-3 22-1 31 3M47 28c7 1 13 5 22 2" fill="none" stroke="#f7e4bd" strokeWidth="1.1" strokeLinecap="round" opacity="0.24" />
+      </pattern>
+    </defs>
+    <rect width={BOARD_WIDTH} height={BOARD_HEIGHT} fill="#8b5e3e" />
+    <rect x="26" y="26" width={BOARD_WIDTH - 52} height={BOARD_HEIGHT - 52} fill={`url(#${corkPattern})`} />
+    <rect x="30" y="30" width={BOARD_WIDTH - 60} height={BOARD_HEIGHT - 60} fill="none" stroke="#6f452d" strokeWidth="8" opacity="0.32" />
+    <rect x="38" y="38" width={BOARD_WIDTH - 76} height={BOARD_HEIGHT - 76} fill="none" stroke="#f1d39f" strokeWidth="4" opacity="0.18" />
+  </svg>;
+}
+
+function BoardFrameSurface() {
+  const id = useId().replaceAll(":", "");
+  const wood = `wood-${id}`;
+  const grain = `grain-${id}`;
+  return <svg className="board-frame-surface" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} width={BOARD_WIDTH} height={BOARD_HEIGHT} preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id={wood} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#a57951" />
+        <stop offset="0.18" stopColor="#80583c" />
+        <stop offset="0.52" stopColor="#65422e" />
+        <stop offset="0.78" stopColor="#8c6243" />
+        <stop offset="1" stopColor="#5d3b29" />
+      </linearGradient>
+      <pattern id={grain} width="92" height="28" patternUnits="userSpaceOnUse">
+        <rect width="92" height="28" fill={`url(#${wood})`} />
+        <path d="M0 7c18-5 31 7 52 0s27-2 40 2M-8 20c21-7 36 5 55-1s30 0 53-4" fill="none" stroke="#d5aa79" strokeWidth="1.8" opacity="0.22" />
+        <path d="M7 13c11-2 19 2 30-1M55 24c9-4 22-4 34-1" fill="none" stroke="#3f271c" strokeWidth="1.4" opacity="0.25" />
+      </pattern>
+    </defs>
+    <path d={`M0 0H${BOARD_WIDTH}L${BOARD_WIDTH - 34} 34H34Z`} fill={`url(#${grain})`} />
+    <path d={`M0 ${BOARD_HEIGHT}H${BOARD_WIDTH}L${BOARD_WIDTH - 34} ${BOARD_HEIGHT - 34}H34Z`} fill={`url(#${grain})`} />
+    <path d={`M0 0L34 34V${BOARD_HEIGHT - 34}L0 ${BOARD_HEIGHT}Z`} fill={`url(#${grain})`} />
+    <path d={`M${BOARD_WIDTH} 0L${BOARD_WIDTH - 34} 34V${BOARD_HEIGHT - 34}L${BOARD_WIDTH} ${BOARD_HEIGHT}Z`} fill={`url(#${grain})`} />
+    <rect x="2" y="2" width={BOARD_WIDTH - 4} height={BOARD_HEIGHT - 4} fill="none" stroke="#3f281c" strokeWidth="5" />
+    <rect x="31" y="31" width={BOARD_WIDTH - 62} height={BOARD_HEIGHT - 62} fill="none" stroke="#4b3022" strokeWidth="6" opacity="0.7" />
+    <rect x="37" y="37" width={BOARD_WIDTH - 74} height={BOARD_HEIGHT - 74} fill="none" stroke="#d5a97a" strokeWidth="3" opacity="0.42" />
+  </svg>;
+}
+
+export function BoardNotePaper({ shape = "note", textStyle = "default", children }: { shape?: string; textStyle?: string; children: ReactNode }) {
+  return <div className={`board-free-note shape-${shape} text-${textStyle}`}><p>{children}</p></div>;
+}
 
 export function MemoryVisual({ memory, url, detailed = false, eager = false }: { memory: BoardMemory; url?: string; detailed?: boolean; eager?: boolean }) {
   const asset = primaryAsset(memory);
@@ -182,17 +245,20 @@ function BoardPiece({ item, url, mode = "view", selected = false, multiSelected 
   }
 
   const memory = item.memory ?? item.group?.representative ?? null;
-  const style = item.styleJson ?? {};
+  const style = normalizeBoardPieceStyle(item.styleJson, item.elementType);
   const effectiveAttachment = clipped ? "clip" : style.attachment ?? "pin";
   const actionable = !isDecorative && (editMode || item.elementType === "bundle" || Boolean(item.memoryId));
   return <div data-board-item="true" data-item-id={item.id} className={`board-piece piece-${item.elementType} color-${style.color ?? "cream"} attach-${effectiveAttachment} shadow-${style.shadow ?? "soft"}${selected ? " selected" : ""}${multiSelected ? " multi-selected" : ""}${editMode ? " editable" : ""}${clipped ? " is-clipped" : ""}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, zIndex: item.zIndex, transform: `rotate(${item.rotationTenths / 10}deg)` }} tabIndex={actionable ? 0 : -1} role={actionable ? "button" : undefined} aria-label={actionable ? editMode ? `${paperLabel(item)} 선택됨 ${selected || multiSelected ? "예" : "아니오"}` : item.elementType === "bundle" ? `${paperLabel(item)} 열기` : `${paperLabel(item)} 자세히 보기` : undefined} onDragStart={(event) => event.preventDefault()} onKeyDown={keyDown}>
     {clipped ? <span className="board-clothespin" aria-hidden="true"><i /></span> : effectiveAttachment === "tape" ? <span className="board-piece-tape" aria-hidden="true" /> : effectiveAttachment === "pin" ? <span className="board-pin" aria-hidden="true" /> : null}
     {multiSelected && <span className="board-selection-tape" aria-hidden="true">✓</span>}
-    {item.elementType === "image" && (url ? <div className="board-image-container" style={{ width: "100%", height: "100%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}><div className="board-image-bg" style={{ width: "100%", height: "100%", backgroundImage: `url(${url})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }} /><img className="board-free-image" src={url} alt={item.asset?.originalFilename ?? "보드 사진"} loading={eager ? "eager" : "lazy"} draggable={false} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} /></div> : <span className="board-image-loading">사진을 펼치고 있어요</span>)}
-    {(item.elementType === "note" || item.elementType === "label") && <div className={`board-free-note shape-${style.shape ?? "note"}`}><p>{item.textContent}</p></div>}
-    {item.elementType === "sticker" && <div className={`board-free-sticker sticker-${style.sticker ?? "sparkle"}`} aria-hidden="true">{style.sticker === "heart" ? "♡" : style.sticker === "star" ? "☆" : style.sticker === "flower" ? "✿" : style.sticker === "arrow" ? "↝" : style.sticker === "tape" ? "▱" : "✦"}</div>}
-    {item.elementType === "bundle" && item.group && <div className={`board-group-stack group-${item.group.style}`}><i aria-hidden="true" /><i aria-hidden="true" />{memory && <MemoryVisual memory={memory} url={url} eager={eager} />}<div className="board-group-label"><strong>{item.group.name}</strong><small>{item.group.count}개의 추억</small></div></div>}
-    {item.elementType === "memory" && item.memory && <MemoryVisual memory={item.memory} url={url} eager={eager} />}
+    <div className="board-piece-surface">
+      {item.elementType === "image" && (url ? <div className="board-image-container" style={{ width: "100%", height: "100%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}><span className="board-object-ground" aria-hidden="true" /><div className="board-image-bg" style={{ width: "100%", height: "100%", backgroundImage: `url(${url})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }} /><img className="board-free-image" src={url} alt={item.asset?.originalFilename ?? "보드 사진"} loading={eager ? "eager" : "lazy"} draggable={false} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} /></div> : <span className="board-image-loading">사진을 펼치고 있어요</span>)}
+      {(item.elementType === "note" || item.elementType === "label") && <BoardNotePaper shape={style.shape} textStyle={style.textStyle}>{item.textContent}</BoardNotePaper>}
+      {item.elementType === "sticker" && <div className={`board-free-sticker sticker-${style.sticker ?? "sparkle"}`} aria-hidden="true">{style.sticker === "heart" ? "♡" : style.sticker === "star" ? "☆" : style.sticker === "flower" ? "✿" : style.sticker === "arrow" ? "↝" : style.sticker === "tape" ? "▱" : "✦"}</div>}
+      {item.elementType === "bundle" && item.group && <div className={`board-group-stack group-${item.group.style}`}><i aria-hidden="true" /><i aria-hidden="true" />{memory && <MemoryVisual memory={memory} url={url} eager={eager} />}<div className="board-group-label"><strong>{item.group.name}</strong><small>{item.group.count}개의 추억</small></div></div>}
+      {item.elementType === "memory" && item.memory && <MemoryVisual memory={item.memory} url={url} eager={eager} />}
+    </div>
+    {(selected || multiSelected) && <span className="board-selection-outline" aria-hidden="true" />}
     {editMode && selected && <>
       <button type="button" data-piece-handle className="piece-rotate-handle" aria-label="회전 손잡이" style={{ "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={rotateStart} onPointerMove={(event) => rotateMove(event, false)} onPointerUp={(event) => rotateMove(event, true)} onPointerCancel={(event) => rotateMove(event, true)} />
       <button type="button" data-piece-handle className="piece-resize-handle" aria-label="크기 조절 손잡이" style={{ "--board-handle-inverse-scale": 1 / Math.max(scale, 0.01) } as CSSProperties} onPointerDown={resizeStart} onPointerMove={resizeMove} onPointerUp={resizeEnd} onPointerCancel={resizeEnd} />
@@ -234,12 +300,7 @@ export function BoardArtwork({ items, threads, className = "", assetOverrides = 
   const eager = mode === "export" || mode === "edit" || eagerImages;
 
   return <div className={`board-artwork ${className}`} style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT }}>
-    <div className="board-wood-frame" aria-hidden="true">
-      <div className="frame-top" />
-      <div className="frame-bottom" />
-      <div className="frame-left" />
-      <div className="frame-right" />
-    </div>
+    <BoardSurface />
     <svg className="board-thread-layer" width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-label="추억을 잇는 실">{threads.map((thread) => {
       const paths = thread.mode === "linking" ? linkingPaths(thread, itemMap) : [hangingPath(thread)];
       return <g key={thread.id} data-thread-id={thread.id} className={`rope rope-${thread.color} mode-${thread.mode}${selectedThreadId === thread.id ? " selected" : ""}`} onPointerDown={(event) => { if (!isEdit) return; event.preventDefault(); event.stopPropagation(); onThreadSelect?.(thread.id); }}>{paths.map((path, index) => <g key={index}><path className="rope-shadow" data-segment-index={index} d={path} /><path className="rope-cord" data-segment-index={index} d={path} /></g>)}{thread.mode === "hanging" && <><circle cx={thread.startX} cy={thread.startY} r="9" /><circle cx={thread.endX} cy={thread.endY} r="9" /></>}</g>;
@@ -251,6 +312,7 @@ export function BoardArtwork({ items, threads, className = "", assetOverrides = 
       return <div key={thread.id} className="rope-selected-controls"><ThreadDragHandle thread={thread} part="whole" x={middle.x} y={middle.y} scale={scale} onDrag={thread.mode === "hanging" ? onThreadDrag : undefined} />{thread.mode === "hanging" && <><ThreadDragHandle thread={thread} part="start" x={thread.startX} y={thread.startY} scale={scale} onDrag={onThreadDrag} /><ThreadDragHandle thread={thread} part="end" x={thread.endX} y={thread.endY} scale={scale} onDrag={onThreadDrag} /></>}</div>;
     })}
     {items.map((item) => <BoardPiece key={item.id} item={item} url={itemAssetUrl(item, assetOverrides)} mode={mode} selected={selectedItemIds.length === 1 && selectedItemIds[0] === item.id} multiSelected={selectedItemIds.length > 1 && selectedItemIds.includes(item.id)} clipped={clippedIds.has(item.id)} scale={scale} onSelect={(event) => onItemSelect?.(item.id, event)} onOpen={() => onItemOpen?.(item)} onOpenBundle={() => onBundleOpen?.(item)} onResize={onItemResize} onRotate={onItemRotate} onKeyboardMove={onKeyboardMove} eagerImages={eager} decorative={isDecorative} />)}
+    <BoardFrameSurface />
   </div>;
 }
 

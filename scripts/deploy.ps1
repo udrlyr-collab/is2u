@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $release = Get-Date -Format 'yyyyMMddHHmmss'
 $archive = Join-Path $env:TEMP "is2u-$release.tar.gz"
-tar.exe -czf $archive --exclude=.git --exclude=node_modules --exclude=.next --exclude=cloudflare --exclude=ssh --exclude=.secrets --exclude=coverage .
+tar.exe -czf $archive --exclude=.git --exclude=node_modules --exclude=.next --exclude=.playwright-cli --exclude='*.tsbuildinfo' --exclude=cloudflare --exclude=ssh --exclude=.secrets --exclude=coverage .
 scp.exe -i $KeyPath -o BatchMode=yes $archive "ubuntu@${HostAddress}:/tmp/is2u-release.tar.gz"
 scp.exe -i $KeyPath -o BatchMode=yes $ServerEnv "ubuntu@${HostAddress}:/tmp/is2u-server.env"
 $command = @"

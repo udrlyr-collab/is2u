@@ -1,4 +1,5 @@
 import type { MemoryType } from "@is2u/core/types";
+import type { BoardPieceStyle } from "../../../lib/board-style";
 
 export type BoardMode = "view" | "edit" | "thumbnail" | "export";
 
@@ -33,7 +34,7 @@ export type BoardGroup = {
 };
 
 export type BoardAsset = { id: string; mimeType: string; originalFilename: string; status: string };
-export type PieceStyle = { color?: string; attachment?: string; shape?: string; sticker?: string; shadow?: string };
+export type PieceStyle = BoardPieceStyle;
 
 export type BoardItem = {
   id: string;

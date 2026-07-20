@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, InlineNotice, Input, Textarea } from "../../../../components/ui";
 import { BackButton } from "../../../../components/back-button";
+import { DetailTopline } from "../../../../components/detail-topline";
 import { PaperConfirmDialog } from "../../../../components/paper-dialog";
 import { apiFetch } from "../../../../lib/client";
 import { parseSeoulDateTimeInput, toSeoulDateTimeInput } from "@is2u/core/dates";
@@ -82,9 +83,9 @@ export function DateDetail({ id }: { id: string }) {
     }
   }
 
-  if (!item || !draft) return <p className="muted">약속 메모를 펼치고 있어요…</p>;
+  if (!item || !draft) return <><DetailTopline back={<BackButton fallback="/calendar" label="약속으로" ariaLabel="약속 목록으로 돌아가기" />} label="DATE NOTES" /><p className="muted">약속 메모를 펼치고 있어요…</p></>;
   return <>
-    <BackButton fallback="/calendar" label="약속으로" />
+    <DetailTopline back={<BackButton fallback="/calendar" label="약속으로" ariaLabel="약속 목록으로 돌아가기" />} label="DATE NOTES" />
     <header className="date-detail-heading"><span className="detail-tape" aria-hidden="true" /><p className="paper-label">{item.status === "scheduled" ? "UPCOMING" : item.status.toUpperCase()}</p><h1>{item.title || "함께하는 시간"}</h1></header>
     {item.status !== "cancelled" ? <form className="gentle-form" onSubmit={save}>
       <div className="form-grid">

@@ -5,9 +5,18 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Field, InlineNotice, Input, Textarea } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
+import { DetailBackLink, DetailTopline } from "../../../components/detail-topline";
 import { apiFetch } from "../../../lib/client";
 import { uploadBoardImage } from "../../../lib/upload-client";
-import { BoardArtwork, MemoryDetailCard } from "./board-renderer";
+import {
+  BOARD_PAPER_SHAPES,
+  BOARD_TEXT_STYLES,
+  boardPaperDimensions,
+  normalizeBoardPieceStyle,
+  type BoardPaperShape,
+  type BoardTextStyle,
+} from "../../../lib/board-style";
+import { BoardArtwork, BoardNotePaper, MemoryDetailCard } from "./board-renderer";
 import { BoardBottomSheet, type BoardBottomSheetHandle } from "./board-bottom-sheet";
 import { boundedGroupDelta, clamp as clampNumber, hangingLayout, hangingPath, linkingPaths } from "./board-geometry";
 import {
@@ -34,6 +43,34 @@ const ZOOM_MAX = 4;
 const BOARD_EXPORT_FOOTER_HEIGHT = 100;
 const VIEWPORT_COMMIT_DELAY_MS = 140;
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+function todayInSeoul() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+function boardDateLabel(value: string) {
+  const [year, month, day] = value.split("-");
+  return year && month && day ? `${year}. ${month}. ${day}` : "";
+}
+
+export async function waitForBoardCaptureReady(capture: HTMLElement) {
+  await document.fonts.ready;
+  const images = Array.from(capture.querySelectorAll("img"));
+  await Promise.all(images.map(async (image) => {
+    if (!image.complete) {
+      await new Promise<void>((resolve, reject) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => reject(new Error("board_image_load_failed")), { once: true });
+      });
+    }
+    if (!image.naturalWidth) throw new Error("board_image_load_failed");
+    await image.decode().catch(() => {
+      if (!image.naturalWidth) throw new Error("board_image_decode_failed");
+    });
+  }));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 function itemPatch(next: BoardItem) {
   return { id: next.id, x: next.x, y: next.y, width: next.width, height: next.height, rotationTenths: next.rotationTenths, zIndex: next.zIndex, textContent: next.textContent ?? undefined, styleJson: next.styleJson };
@@ -74,32 +111,39 @@ function MemoryPicker({ boardId, mode, existingMemoryIds, onClose, onDone }: { b
 }
 
 function NoteDialog({ boardId, onClose, onDone }: { boardId: string; onClose: () => void; onDone: () => Promise<void> }) {
-  const [kind, setKind] = useState<"note" | "label">("note");
-  const [shape, setShape] = useState("note");
+  const [shape, setShape] = useState<BoardPaperShape>("note");
+  const [textStyle, setTextStyle] = useState<BoardTextStyle>("default");
   const [color, setColor] = useState("butter");
   const [attachment, setAttachment] = useState("tape");
   const [text, setText] = useState("");
+  const [dateValue, setDateValue] = useState(todayInSeoul);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const definition = BOARD_PAPER_SHAPES.find((option) => option.id === shape) ?? BOARD_PAPER_SHAPES[0];
+  const kind = definition.elementType;
+  const dimensions = boardPaperDimensions(kind, shape);
+  const content = shape === "date" ? boardDateLabel(dateValue) : text.trim();
   async function save() {
-    if (!text.trim()) { setError("메모 내용을 적어주세요"); return; }
+    if (!content) { setError(shape === "date" ? "표시할 날짜를 골라주세요" : "메모 내용을 적어주세요"); return; }
     setBusy(true); setError("");
-    try { await apiFetch("/api/board/items", { method: "POST", body: JSON.stringify({ boardId, elementType: kind, textContent: text, styleJson: { color, attachment, shape, shadow: "firm" } }) }); await onDone(); onClose(); }
+    try { await apiFetch("/api/board/items", { method: "POST", body: JSON.stringify({ boardId, elementType: kind, textContent: content, styleJson: { color, attachment, shape, textStyle, shadow: "firm" } }) }); await onDone(); onClose(); }
     catch { setError("메모지를 붙이지 못했어요"); }
     finally { setBusy(false); }
   }
-  const shapes = [{ id: "note:note", label: "메모지" }, { id: "note:speech", label: "말풍선 메모" }, { id: "label:title", label: "제목 라벨" }, { id: "label:scribble", label: "낙서형 텍스트" }, { id: "label:date", label: "날짜 라벨" }, { id: "note:caption", label: "짧은 설명 카드" }];
   return <div className="board-dialog-backdrop"><section className="board-note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title"><p className="paper-label">WRITE A LITTLE NOTE</p><h2 id="note-dialog-title">메모지 붙이기</h2>
-    <div className="note-preview-box" style={{ marginBlock: "0.4rem 0.8rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.3rem" }}>
-      <span className="tool-field-label" style={{ margin: 0 }}>완성될 메모지 미리보기</span>
-      <div className="note-preview-stage" style={{ padding: "0.8rem 1rem", background: "rgb(232 222 210 / 0.5)", borderRadius: "6px", display: "grid", placeItems: "center", width: "100%", minHeight: "140px" }}>
-        <div className={`board-piece piece-${kind} color-${color} attach-${attachment} shadow-firm`} style={{ position: "relative", width: "220px", height: shape === "title" ? "74px" : "150px", transform: "rotate(-1deg)", pointerEvents: "none" }}>
+    <div className="note-preview-box">
+      <span className="tool-field-label">완성될 종이 미리보기</span>
+      <div className="note-preview-stage">
+        <div className={`board-piece note-preview-piece piece-${kind} color-${color} attach-${attachment} shadow-firm`} style={{ position: "relative", width: dimensions.width, height: dimensions.height, transform: "rotate(-1deg)", pointerEvents: "none" }}>
           {attachment === "tape" ? <span className="board-piece-tape" aria-hidden="true" /> : attachment === "pin" ? <span className="board-pin" aria-hidden="true" /> : null}
-          <div className={`board-free-note shape-${shape}`}><p>{text || "여기에 적은 메모가 펼쳐져요"}</p></div>
+          <div className="board-piece-surface"><BoardNotePaper shape={shape} textStyle={textStyle}>{content || "여기에 적은 메모가 펼쳐져요"}</BoardNotePaper></div>
         </div>
       </div>
     </div>
-    <div><span className="tool-field-label">모양</span><div className="paper-choice-row">{shapes.map((option) => <button key={option.id} type="button" aria-pressed={`${kind}:${shape}` === option.id} onClick={() => { const [nextKind, nextShape] = option.id.split(":"); setKind(nextKind as "note" | "label"); setShape(nextShape); }}>{option.label}</button>)}</div></div><Field label="내용"><Textarea rows={3} maxLength={500} value={text} autoFocus onChange={(event) => setText(event.target.value)} /></Field><div><span className="tool-field-label">종이색</span><PaperSwatches value={color} onChange={setColor} /></div><div><span className="tool-field-label">붙이는 방법</span><div className="paper-choice-row">{[{ id: "tape", label: "테이프" }, { id: "pin", label: "압정" }, { id: "none", label: "그대로" }].map((option) => <button key={option.id} type="button" aria-pressed={attachment === option.id} onClick={() => setAttachment(option.id)}>{option.label}</button>)}</div></div>{error && <InlineNotice tone="error">{error}</InlineNotice>}<div className="form-actions"><Button variant="quiet" onClick={onClose}>닫기</Button><Button disabled={busy} onClick={() => void save()}>{busy ? "붙이고 있어요…" : "메모지 붙이기"}</Button></div></section></div>;
+    <div><span className="tool-field-label">종이 모양</span><div className="paper-shape-grid">{BOARD_PAPER_SHAPES.map((option) => <button key={option.id} type="button" aria-pressed={shape === option.id} onClick={() => { setShape(option.id); setError(""); }}><strong>{option.label}</strong><small>{option.description}</small></button>)}</div></div>
+    <div><span className="tool-field-label">글씨</span><div className="paper-choice-row">{BOARD_TEXT_STYLES.map((option) => <button key={option.id} type="button" aria-pressed={textStyle === option.id} onClick={() => setTextStyle(option.id)}>{option.label}</button>)}</div></div>
+    {shape === "date" ? <><Field label="보드에 표시할 날짜"><Input type="date" value={dateValue} autoFocus onChange={(event) => setDateValue(event.target.value)} /></Field><p className="tool-hand-note">약속과 연결되지 않고 보드에 날짜만 표시해요</p></> : <Field label="내용"><Textarea rows={3} maxLength={500} value={text} autoFocus onChange={(event) => setText(event.target.value)} /></Field>}
+    <div><span className="tool-field-label">종이색</span><PaperSwatches value={color} onChange={setColor} /></div><div><span className="tool-field-label">붙이는 방법</span><div className="paper-choice-row">{[{ id: "tape", label: "테이프" }, { id: "pin", label: "압정" }, { id: "none", label: "그대로" }].map((option) => <button key={option.id} type="button" aria-pressed={attachment === option.id} onClick={() => setAttachment(option.id)}>{option.label}</button>)}</div></div>{error && <InlineNotice tone="error">{error}</InlineNotice>}<div className="form-actions"><Button variant="quiet" onClick={onClose}>닫기</Button><Button disabled={busy} onClick={() => void save()}>{busy ? "붙이고 있어요…" : "종이 붙이기"}</Button></div></section></div>;
 }
 
 function ShareDialog({ status, message, onClose, onShare }: { status: "idle" | "preparing" | "success" | "error"; message: string; onClose: () => void; onShare: () => void }) {
@@ -218,6 +262,7 @@ export function BoardView({ boardId }: { boardId: string }) {
   const [shareMessage, setShareMessage] = useState("");
   const viewportElement = useRef<HTMLDivElement>(null);
   const shareCapture = useRef<HTMLDivElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<BoardBottomSheetHandle>(null);
   const bundleReturnFocus = useRef<HTMLElement | null>(null);
   const viewportRef = useRef(viewport);
@@ -516,11 +561,7 @@ export function BoardView({ boardId }: { boardId: string }) {
     const element = viewportElement.current;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
-      const isMobile = window.matchMedia("(max-width: 739px), (max-height: 500px)").matches;
-      const isSideBySide = !isMobile && window.matchMedia("(min-width: 1100px)").matches;
-      const isDesktopPanel = editMode && panelOpen && !isMobile;
-      const rawWidth = entry.contentRect.width;
-      const width = (isDesktopPanel && isSideBySide) ? rawWidth + 364 : rawWidth;
+      const width = entry.contentRect.width;
       const height = entry.contentRect.height;
       const nextSize = { width, height };
       const nextFitScale = Math.min(width / BOARD_WIDTH, height / BOARD_HEIGHT) * 0.94;
@@ -532,7 +573,7 @@ export function BoardView({ boardId }: { boardId: string }) {
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [payload?.board?.id, editMode, panelOpen]);
+  }, [payload?.board?.id]);
   useEffect(() => () => {
     const shouldFlushItems = Boolean(pendingItemSave.current);
     const shouldFlushViewport = Boolean(pendingViewportSave.current);
@@ -1241,23 +1282,7 @@ export function BoardView({ boardId }: { boardId: string }) {
     setShareMessage("보드를 사진으로 준비하고 있어요");
 
     try {
-      await document.fonts.ready;
-      
-      const images = Array.from(capture.querySelectorAll("img"));
-      await Promise.all(
-        images.map(async (image) => {
-          if (!image.complete) {
-            await new Promise<void>((resolve, reject) => {
-              image.addEventListener("load", () => resolve(), { once: true });
-              image.addEventListener("error", () => reject(new Error("board_image_load_failed")), { once: true });
-            });
-          }
-          if (!image.naturalWidth) throw new Error("board_image_load_failed");
-          await image.decode().catch(() => {
-            if (!image.naturalWidth) throw new Error("board_image_decode_failed");
-          });
-        })
-      );
+      await waitForBoardCaptureReady(capture);
 
       const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(capture, {
@@ -1310,22 +1335,19 @@ export function BoardView({ boardId }: { boardId: string }) {
     }
   }
 
-  if (!payload?.board) return <div className="board-detail-loading"><Link className="back-button" href="/board"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6.5-5.5 5.5 5.5 5.5M9.5 12H20" /></svg><span>보드 목록</span></Link>{message ? <InlineNotice tone="error">{message}</InlineNotice> : <p>보드를 펼치고 있어요…</p>}</div>;
+  if (!payload?.board) return <div className="board-detail-loading"><DetailTopline back={<DetailBackLink href="/board" label="보드 목록" ariaLabel="보드 목록으로 돌아가기" />} label="OUR CORK BOARD" />{message ? <InlineNotice tone="error">{message}</InlineNotice> : <p>보드를 펼치고 있어요…</p>}</div>;
   const transformBase = basePosition();
   const contextMode = selectedThread ? "thread" : multiMode ? "multi" : selectedItem ? selectedItem.elementType === "note" || selectedItem.elementType === "label" ? "note" : "single" : "add";
   const selectedHangingThread = selectedItem ? hangingThreadForItem(selectedItem.id) : null;
+  const selectedPaperStyle = selectedItem ? normalizeBoardPieceStyle(selectedItem.styleJson, selectedItem.elementType) : null;
+  const compatiblePaperShapes = selectedItem && (selectedItem.elementType === "note" || selectedItem.elementType === "label")
+    ? BOARD_PAPER_SHAPES.filter((option) => option.elementType === selectedItem.elementType)
+    : [];
   const toolboxTitle = contextMode === "add" || contextMode === "multi" ? "무엇을 붙일까요" : contextMode === "thread" ? "실 다듬기" : `${selectedItem ? shortPaperLabel(selectedItem) : "조각"} 다듬기`;
   return <div className={`memory-board-screen${editMode ? " is-editing" : " is-viewing"}`}>
     <header className="board-detail-header">
       <div className="board-detail-title-area">
-        <div className="board-header-top-row">
-          <Link className="back-button" href="/board">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6.5-5.5 5.5 5.5 5.5M9.5 12H20" /></svg>
-            <span>보드 목록</span>
-          </Link>
-          <span className="header-top-sep" aria-hidden="true">·</span>
-          <p className="paper-label">OUR CORK BOARD</p>
-        </div>
+        <DetailTopline back={<DetailBackLink href="/board" label="보드 목록" ariaLabel="보드 목록으로 돌아가기" />} label="OUR CORK BOARD" />
         <h1>{payload.board.title}</h1>
         {payload.board.description && <p>{payload.board.description}</p>}
         <small>{payload.owner.displayName}의 보드 · {items.length}개의 조각</small>
@@ -1356,26 +1378,46 @@ export function BoardView({ boardId }: { boardId: string }) {
       </div>
     </header>
     <div className="board-status-line"><span>{editMode ? "꾸미기 모드" : "보기 모드"}</span><small aria-live="polite">{message || (saveState === "saving" ? "저장 중…" : saveState === "saved" ? "보드를 저장했어요" : saveState === "error" ? "저장하지 못했어요" : "")}</small></div>
-    <div className={`board-workspace${editMode && panelOpen ? " has-toolbox" : ""}`}>
+    <div className={`board-workspace${payload.canEdit ? " can-decorate" : ""}${editMode && panelOpen ? " has-toolbox" : ""}`}>
       <div ref={viewportElement} className="board-viewport-fixed" onPointerDown={startCanvas} onPointerMove={moveCanvas} onPointerUp={endCanvas} onPointerCancel={cancelCanvas} onLostPointerCapture={cancelCanvas} onDoubleClick={(event) => zoomAt(viewport.scale < 1.5 ? 1.6 : 1, event.clientX, event.clientY)}>
         <div className="board-canvas-fixed" style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT, transform: `translate(${transformBase.x + viewport.x}px, ${transformBase.y + viewport.y}px) scale(${effectiveScale})` }}><BoardArtwork items={items} threads={threads} assetOverrides={assetOverrides} mode={editMode ? "edit" : "view"} scale={effectiveScale} selectedItemIds={selectedItemIds} selectedThreadId={selectedThreadId} onItemSelect={chooseItem} onItemOpen={(item) => item.memoryId && openMemory(item.memoryId)} onBundleOpen={openBundle} onThreadSelect={(id) => { setSelectedThreadId(id); setSelectedItemIds([]); setPanelOpen(true); sheetRef.current?.openToMiddle(); }} onItemResize={resizeItem} onItemRotate={rotateItem} onThreadDrag={moveThread} onKeyboardMove={keyboardMove} /></div>
         {openGroup && <BundleSpread group={openGroup} isClosing={bundleClosing} onClose={closeBundle} onOpenDetail={openMemory} />}
         <div className="board-zoom-controls" aria-label="보드 확대"><button type="button" aria-label="축소" onClick={() => zoomAt(viewport.scale / 1.15)}>−</button><span>{Math.round(viewport.scale * 100)}%</span><button type="button" aria-label="확대" onClick={() => zoomAt(viewport.scale * 1.15)}>+</button><button type="button" onClick={() => { const next = { x: 0, y: 0, scale: 1 }; setView(next); saveViewport(next); }}>전체 보기</button></div>
       </div>
-      {editMode && panelOpen && <BoardBottomSheet ref={sheetRef} className={`context-${contextMode}`} title={toolboxTitle} headerAction={
+      {payload.canEdit && <div className="board-toolbox-slot">
+      {editMode && panelOpen && <BoardBottomSheet ref={sheetRef} className={`board-bottom-sheet desktop-toolbox context-${contextMode}`} title={toolboxTitle} headerAction={
           <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); setSelectedThreadId(null); }}>
             <span>여러 장 고르기</span>
           </button>
         }>
-        {contextMode === "add" && <div className="tool-paper-grid"><button type="button" className="btn-add-memory" onClick={() => setPicker("attach")}><strong>추억 붙이기</strong></button><label className="tool-upload btn-add-photo"><strong>사진 붙이기</strong><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label><button type="button" className="btn-add-note" onClick={() => setNoteOpen(true)}><strong>메모지 붙이기</strong></button><button type="button" className="btn-add-bundle" onClick={() => setPicker("group")}><strong>추억 번들</strong></button>{uploadProgress !== null && <p className="tool-progress" aria-live="polite">사진을 붙이는 중 {uploadProgress}%</p>}</div>}
+        {contextMode === "add" && <div className="tool-paper-grid">
+          <button type="button" className="board-tool-action action-memory" onClick={() => setPicker("attach")}><span className="board-tool-mark" aria-hidden="true">⌑</span><strong>추억 붙이기</strong><small>보관함에서 골라요</small></button>
+          <button type="button" className="board-tool-action action-photo" onClick={() => photoInput.current?.click()}><span className="board-tool-mark" aria-hidden="true">▧</span><strong>사진 붙이기</strong><small>기기에서 가져와요</small></button>
+          <input ref={photoInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" tabIndex={-1} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.currentTarget.value = ""; }} />
+          <button type="button" className="board-tool-action action-note" onClick={() => setNoteOpen(true)}><span className="board-tool-mark" aria-hidden="true">⌁</span><strong>메모지 붙이기</strong><small>짧은 말을 적어요</small></button>
+          <button type="button" className="board-tool-action action-bundle" onClick={() => setPicker("group")}><span className="board-tool-mark" aria-hidden="true">≋</span><strong>추억 번들</strong><small>여러 장을 묶어요</small></button>
+          {uploadProgress !== null && <p className="tool-progress" aria-live="polite">사진을 붙이는 중 {uploadProgress}%</p>}
+        </div>}
         {contextMode === "multi" && <div className="tool-section-stack"><ol className="selected-piece-list">{selectedItemIds.map((id, index) => { const item = itemMap.get(id); return item ? <li key={id}><span>{index + 1}</span>{shortPaperLabel(item)}</li> : null; })}</ol><div className="thread-mode-actions"><button type="button" onClick={() => void createThread("hanging")}><i aria-hidden="true">⌁</i><strong>실에 매달기</strong><span>빨래집게로 걸어요</span></button><button type="button" onClick={() => void createThread("linking")}><i aria-hidden="true">↝</i><strong>실로 연결하기</strong><span>지금 자리에서 이어요</span></button></div></div>}
-        {(contextMode === "single" || contextMode === "note") && selectedItem && <div className="tool-section-stack">{selectedItem.elementType === "image" && selectedItem.asset?.originalFilename && (
-          <span className="tool-file-helper" title={selectedItem.asset.originalFilename}>
-            파일: {selectedItem.asset.originalFilename.length > 25 ? selectedItem.asset.originalFilename.slice(0, 24) + "…" : selectedItem.asset.originalFilename}
-          </span>
-        )}<div className="compact-adjuster"><span>크기</span><button aria-label="작게" onClick={() => transformSelected({ width: Math.max(80, selectedItem.width - 24), height: Math.max(60, Math.round(selectedItem.height * Math.max(80, selectedItem.width - 24) / selectedItem.width)) })}>−</button><input aria-label="크기" type="range" min="80" max="720" value={selectedItem.width} onChange={(event) => { const width = Number(event.target.value); previewSelected({ width, height: Math.min(620, Math.max(60, Math.round(selectedItem.height * width / selectedItem.width))) }); }} onPointerUp={commitSelectedPreview} onPointerCancel={commitSelectedPreview} onKeyUp={commitSelectedPreview} onBlur={commitSelectedPreview} /><button aria-label="크게" onClick={() => transformSelected({ width: Math.min(720, selectedItem.width + 24), height: Math.min(620, Math.round(selectedItem.height * Math.min(720, selectedItem.width + 24) / selectedItem.width)) })}>＋</button></div><div className="compact-adjuster"><span>기울기</span><button aria-label="왼쪽으로 기울이기" onClick={() => transformSelected({ rotationTenths: Math.max(-120, selectedItem.rotationTenths - 10) })}>↶</button><button onClick={() => transformSelected({ rotationTenths: 0 })}>바로 놓기</button><button aria-label="오른쪽으로 기울이기" onClick={() => transformSelected({ rotationTenths: Math.min(120, selectedItem.rotationTenths + 10) })}>↷</button></div><div className="paper-choice-row"><button onClick={() => transformSelected({ zIndex: maxZ + 1 })}>앞으로</button><button onClick={() => transformSelected({ zIndex: 1 })}>뒤로</button></div>{selectedHangingThread ? <button type="button" onClick={() => void removeThreadMember(selectedItem.id)}>실에서 분리하기</button> : <><span className="tool-field-label">붙이는 방법</span><div className="paper-choice-row">{[{ id: "pin", label: "압정" }, { id: "tape", label: "테이프" }, { id: "none", label: "그대로" }].map((option) => <button key={option.id} aria-pressed={selectedItem.styleJson.attachment === option.id} onClick={() => transformSelected({ styleJson: { ...selectedItem.styleJson, attachment: option.id } })}>{option.label}</button>)}</div></>}{contextMode === "note" && <><span className="tool-field-label">종이색</span><PaperSwatches value={selectedItem.styleJson.color ?? "cream"} onChange={(color) => transformSelected({ styleJson: { ...selectedItem.styleJson, color } })} /></>}<button type="button" className="danger paper-detach" onClick={() => setConfirmDetach(selectedItem.id)}>보드에서 떼기</button></div>}
+        {(contextMode === "single" || contextMode === "note") && selectedItem && <div className="tool-section-stack">
+          {selectedItem.elementType === "image" && selectedItem.asset?.originalFilename && <span className="tool-file-helper" title={selectedItem.asset.originalFilename}>파일: {selectedItem.asset.originalFilename.length > 25 ? `${selectedItem.asset.originalFilename.slice(0, 24)}…` : selectedItem.asset.originalFilename}</span>}
+          <div className="compact-adjuster"><span>크기</span><button type="button" aria-label="작게" onClick={() => transformSelected({ width: Math.max(80, selectedItem.width - 24), height: Math.max(60, Math.round(selectedItem.height * Math.max(80, selectedItem.width - 24) / selectedItem.width)) })}>−</button><input aria-label="크기" type="range" min="80" max="720" value={selectedItem.width} onChange={(event) => { const width = Number(event.target.value); previewSelected({ width, height: Math.min(620, Math.max(60, Math.round(selectedItem.height * width / selectedItem.width))) }); }} onPointerUp={commitSelectedPreview} onPointerCancel={commitSelectedPreview} onKeyUp={commitSelectedPreview} onBlur={commitSelectedPreview} /><button type="button" aria-label="크게" onClick={() => transformSelected({ width: Math.min(720, selectedItem.width + 24), height: Math.min(620, Math.round(selectedItem.height * Math.min(720, selectedItem.width + 24) / selectedItem.width)) })}>＋</button></div>
+          <div className="compact-adjuster"><span>기울기</span><button type="button" aria-label="왼쪽으로 기울이기" onClick={() => transformSelected({ rotationTenths: Math.max(-120, selectedItem.rotationTenths - 10) })}>↶</button><button type="button" onClick={() => transformSelected({ rotationTenths: 0 })}>바로 놓기</button><button type="button" aria-label="오른쪽으로 기울이기" onClick={() => transformSelected({ rotationTenths: Math.min(120, selectedItem.rotationTenths + 10) })}>↷</button></div>
+          <div className="paper-choice-row"><button type="button" onClick={() => transformSelected({ zIndex: maxZ + 1 })}>앞으로</button><button type="button" onClick={() => transformSelected({ zIndex: 1 })}>뒤로</button></div>
+          {contextMode === "note" && selectedPaperStyle && <>
+            <span className="tool-field-label">종이 모양</span>
+            <div className="paper-shape-grid compact">{compatiblePaperShapes.map((option) => <button key={option.id} type="button" aria-pressed={selectedPaperStyle.shape === option.id} onClick={() => { const nextSize = boardPaperDimensions(selectedItem.elementType, option.id); transformSelected({ ...nextSize, styleJson: { ...selectedItem.styleJson, shape: option.id, textStyle: selectedPaperStyle.textStyle ?? "default" } }); }}><strong>{option.label}</strong><small>{option.description}</small></button>)}</div>
+            <span className="tool-field-label">글씨</span>
+            <div className="paper-choice-row">{BOARD_TEXT_STYLES.map((option) => <button key={option.id} type="button" aria-pressed={(selectedPaperStyle.textStyle ?? "default") === option.id} onClick={() => transformSelected({ styleJson: { ...selectedItem.styleJson, shape: selectedPaperStyle.shape, textStyle: option.id } })}>{option.label}</button>)}</div>
+            <span className="tool-field-label">종이색</span>
+            <PaperSwatches value={selectedItem.styleJson.color ?? "cream"} onChange={(color) => transformSelected({ styleJson: { ...selectedItem.styleJson, color } })} />
+          </>}
+          {selectedHangingThread ? <button type="button" onClick={() => void removeThreadMember(selectedItem.id)}>실에서 분리하기</button> : <><span className="tool-field-label">붙이는 방법</span><div className="paper-choice-row">{[{ id: "pin", label: "압정" }, { id: "tape", label: "테이프" }, { id: "none", label: "그대로" }].map((option) => <button key={option.id} type="button" aria-pressed={selectedItem.styleJson.attachment === option.id} onClick={() => transformSelected({ styleJson: { ...selectedItem.styleJson, attachment: option.id } })}>{option.label}</button>)}</div></>}
+          <button type="button" className="danger paper-detach" onClick={() => setConfirmDetach(selectedItem.id)}>보드에서 떼기</button>
+        </div>}
         {contextMode === "thread" && selectedThread && <div className="tool-section-stack"><span className="thread-mode-label">{selectedThread.mode === "hanging" ? "실에 매단 추억" : "실로 이은 추억"}</span><span className="tool-field-label">실 색</span><div className="thread-swatch-list" role="radiogroup" aria-label="실 색">{THREAD_COLORS.map((color) => { const isSelected = selectedThread.color === color.id || (color.id === "warm-brown" && ["beige", "brown", "yellow", "muted-red"].includes(selectedThread.color)); return <button key={color.id} type="button" role="radio" aria-checked={isSelected} className={`thread-swatch-item${isSelected ? " is-selected" : ""}`} onClick={() => void updateThread({ color: color.id })}><div className="thread-swatch-paper"><svg width="100%" height="24" viewBox="0 0 100 20" preserveAspectRatio="none" className="thread-preview-svg"><path d="M 5 6 Q 50 16 95 6" fill="none" stroke="rgba(70, 50, 40, 0.15)" strokeWidth="4" strokeLinecap="round" /><path d="M 5 4 Q 50 14 95 4" fill="none" stroke={color.value} strokeWidth="4" strokeLinecap="round" strokeDasharray="3 1.5" /></svg>{isSelected && <span className="swatch-clothespin" aria-hidden="true" />}</div><span className="thread-swatch-label">{color.label}</span></button>; })}</div><span className="tool-field-label">실 처짐</span><div className="thread-curve-controls"><button onClick={() => void updateThread({ curve: Math.max(-160, selectedThread.curve - 16) })}>팽팽하게</button><input aria-label="실 처짐" type="range" min="-160" max="160" value={selectedThread.curve} onChange={(event) => previewThread({ ...selectedThread, curve: Number(event.target.value) })} onPointerUp={(event) => void updateThread({ curve: Number(event.currentTarget.value) }, { ...selectedThread, curve: Number(event.currentTarget.value) })} onKeyUp={(event) => void updateThread({ curve: Number(event.currentTarget.value) }, { ...selectedThread, curve: Number(event.currentTarget.value) })} /><button onClick={() => void updateThread({ curve: Math.min(160, selectedThread.curve + 16) })}>더 늘어지게</button></div><span className="tool-field-label">연결 순서</span><ThreadMemberOrder thread={selectedThread} itemMap={itemMap} onPreview={(ids) => previewThread({ ...selectedThread, itemIds: ids })} onCommit={(ids) => void updateThread({ itemIds: ids }, { ...selectedThread, itemIds: ids })} onDetach={(id) => void removeThreadMember(id)} /><button type="button" className="danger paper-detach" onClick={() => void deleteThread()}>실 연결 해제</button></div>}
       </BoardBottomSheet>}
+      </div>}
     </div>
     {shareOpen && (
       <div className="board-share-capture" aria-hidden="true" ref={shareCapture}>
