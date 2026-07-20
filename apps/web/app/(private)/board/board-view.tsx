@@ -517,6 +517,44 @@ export function BoardView({ boardId }: { boardId: string }) {
     saveViewport(next);
   }
 
+  // Prevent Safari gesture cancellations & page bounce
+  useEffect(() => {
+    const el = viewportElement.current;
+    if (!el) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if ((e.target as HTMLElement).closest(".board-bundle-spread, button, a, input, textarea, select")) return;
+      if (e.touches.length > 1 && e.cancelable) {
+        e.preventDefault();
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if ((e.target as HTMLElement).closest(".board-bundle-spread, input, textarea, select")) return;
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+    };
+
+    const onGesture = (e: Event) => {
+      if (e.cancelable) e.preventDefault();
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("gesturestart", onGesture, { passive: false });
+    el.addEventListener("gesturechange", onGesture, { passive: false });
+    el.addEventListener("gestureend", onGesture, { passive: false });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("gesturestart", onGesture);
+      el.removeEventListener("gesturechange", onGesture);
+      el.removeEventListener("gestureend", onGesture);
+    };
+  }, []);
+
   function wheel(event: ReactWheelEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest(".board-bundle-spread")) return;
     event.preventDefault();
@@ -526,9 +564,10 @@ export function BoardView({ boardId }: { boardId: string }) {
   function startCanvas(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest(".board-bundle-spread, button, a, input, textarea, select")) return;
     
-    // Prevent browser default text/image selection and dragging
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {}
 
     const targetPiece = (event.target as HTMLElement).closest("[data-item-id]");
     const itemId = targetPiece?.getAttribute("data-item-id") || null;
@@ -820,7 +859,20 @@ export function BoardView({ boardId }: { boardId: string }) {
     const moved = origins.map((origin) => ({ ...origin, x: Math.round(origin.x + bounded.dx), y: Math.round(origin.y + bounded.dy) }));
     updateLocals(moved); if (done) { itemDragOrigin.current.clear(); void saveItems(moved); }
   }
-  function resizeItem(item: BoardItem, width: number, height: number, done: boolean) { const next = { ...item, width, height }; updateLocal(next); if (done) void saveItem(next); }
+  function resizeItem(item: BoardItem, width: number, height: number, done: boolean) {
+    const next = { ...item, width, height };
+    const hanging = hangingThreadForItem(item.id);
+    if (hanging) {
+      const updatedMap = new Map(itemMap);
+      updatedMap.set(item.id, next);
+      const arranged = hangingLayout(hanging, updatedMap);
+      updateLocals(arranged);
+      if (done) void saveItems(arranged);
+    } else {
+      updateLocal(next);
+      if (done) void saveItem(next);
+    }
+  }
   function rotateItem(item: BoardItem, rotationTenths: number, done: boolean) { const next = { ...item, rotationTenths }; updateLocal(next); if (done) void saveItem(next); }
   function keyboardMove(item: BoardItem, dx: number, dy: number) {
     const targets = selectedItemIds.length > 1 && selectedItemIds.includes(item.id) ? selectedItemIds.map((id) => itemMap.get(id)).filter((value): value is BoardItem => Boolean(value)) : [item];
@@ -984,11 +1036,14 @@ export function BoardView({ boardId }: { boardId: string }) {
   return <div className={`memory-board-screen${editMode ? " is-editing" : " is-viewing"}`}>
     <header className="board-detail-header">
       <div className="board-detail-title-area">
-        <Link className="back-button" href="/board">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6.5-5.5 5.5 5.5 5.5M9.5 12H20" /></svg>
-          <span>보드 목록</span>
-        </Link>
-        <p className="paper-label">OUR CORK BOARD</p>
+        <div className="board-header-top-row">
+          <Link className="back-button" href="/board">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6.5-5.5 5.5 5.5 5.5M9.5 12H20" /></svg>
+            <span>보드 목록</span>
+          </Link>
+          <span className="header-top-sep" aria-hidden="true">·</span>
+          <p className="paper-label">OUR CORK BOARD</p>
+        </div>
         <h1>{payload.board.title}</h1>
         {payload.board.description && <p>{payload.board.description}</p>}
         <small>{payload.owner.displayName}의 보드 · {items.length}개의 조각</small>
@@ -1027,9 +1082,10 @@ export function BoardView({ boardId }: { boardId: string }) {
       </div>
       {editMode && panelOpen && <BoardBottomSheet ref={sheetRef} className={`context-${contextMode}`} title={toolboxTitle}>
         <div className="tool-header-bar">
-          <span className="selection-count-label">
-            {multiMode ? (selectedItemIds.length > 0 ? `${selectedItemIds.length}장을 골랐어요` : "여러 장 고르는 중") : ""}
-          </span>
+          <div className="tool-header-title">
+            <span aria-hidden="true">✦</span>
+            <strong>{toolboxTitle}</strong>
+          </div>
           <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); }}>
             <span>여러 장 고르기</span>
           </button>
@@ -1044,7 +1100,18 @@ export function BoardView({ boardId }: { boardId: string }) {
         {contextMode === "thread" && selectedThread && <div className="tool-section-stack"><span className="thread-mode-label">{selectedThread.mode === "hanging" ? "실에 매단 추억" : "실로 이은 추억"}</span><span className="tool-field-label">실 색</span><div className="thread-swatch-list" role="radiogroup" aria-label="실 색">{THREAD_COLORS.map((color) => { const isSelected = selectedThread.color === color.id || (color.id === "warm-brown" && ["beige", "brown", "yellow", "muted-red"].includes(selectedThread.color)); return <button key={color.id} type="button" role="radio" aria-checked={isSelected} className={`thread-swatch-item${isSelected ? " is-selected" : ""}`} onClick={() => void updateThread({ color: color.id })}><div className="thread-swatch-paper"><svg width="100%" height="24" viewBox="0 0 100 20" preserveAspectRatio="none" className="thread-preview-svg"><path d="M 5 6 Q 50 16 95 6" fill="none" stroke="rgba(70, 50, 40, 0.15)" strokeWidth="4" strokeLinecap="round" /><path d="M 5 4 Q 50 14 95 4" fill="none" stroke={color.value} strokeWidth="4" strokeLinecap="round" strokeDasharray="3 1.5" /></svg>{isSelected && <span className="swatch-clothespin" aria-hidden="true" />}</div><span className="thread-swatch-label">{color.label}</span></button>; })}</div><span className="tool-field-label">실 처짐</span><div className="thread-curve-controls"><button onClick={() => void updateThread({ curve: Math.max(-160, selectedThread.curve - 16) })}>팽팽하게</button><input aria-label="실 처짐" type="range" min="-160" max="160" value={selectedThread.curve} onChange={(event) => previewThread({ ...selectedThread, curve: Number(event.target.value) })} onPointerUp={(event) => void updateThread({ curve: Number(event.currentTarget.value) }, { ...selectedThread, curve: Number(event.currentTarget.value) })} onKeyUp={(event) => void updateThread({ curve: Number(event.currentTarget.value) }, { ...selectedThread, curve: Number(event.currentTarget.value) })} /><button onClick={() => void updateThread({ curve: Math.min(160, selectedThread.curve + 16) })}>더 늘어지게</button></div><span className="tool-field-label">연결 순서</span><ThreadMemberOrder thread={selectedThread} itemMap={itemMap} onPreview={(ids) => previewThread({ ...selectedThread, itemIds: ids })} onCommit={(ids) => void updateThread({ itemIds: ids }, { ...selectedThread, itemIds: ids })} onDetach={(id) => void removeThreadMember(id)} /><button type="button" className="danger paper-detach" onClick={() => void deleteThread()}>실 연결 해제</button></div>}
       </BoardBottomSheet>}
     </div>
-    {shareOpen && <div className="board-share-capture" aria-hidden="true" ref={shareCapture}><BoardArtwork items={items.filter((item) => !item.id.startsWith("upload-"))} threads={threads} assetOverrides={assetOverrides} mode="export" /></div>}
+    {shareOpen && (
+      <div className="board-share-capture" aria-hidden="true" ref={shareCapture}>
+        <BoardArtwork items={items.filter((item) => !item.id.startsWith("upload-"))} threads={threads} assetOverrides={assetOverrides} mode="export" />
+        <footer className="board-export-footer">
+          <div className="export-footer-title">{payload?.board.title}</div>
+          <div className="export-footer-brand">
+            <span>그대로 멈춰라</span>
+            <small>is2u.today</small>
+          </div>
+        </footer>
+      </div>
+    )}
     {picker && <MemoryPicker boardId={boardId} mode={picker} existingMemoryIds={existingMemoryIds} onClose={() => setPicker(null)} onDone={load} />}{noteOpen && <NoteDialog boardId={boardId} onClose={() => setNoteOpen(false)} onDone={load} />}{shareOpen && <ShareDialog status={shareStatus} message={shareMessage} onClose={() => setShareOpen(false)} onShare={() => void exportBoard()} />}
     {confirmDetach && <PaperConfirmDialog title="이 조각을 보드에서 떼어낼까요" description="보관함의 원본 추억은 그대로 남아 있어요" cancelLabel="그대로 둘게요" confirmLabel="보드에서 떼기" busy={saveState === "saving"} onCancel={() => setConfirmDetach(null)} onConfirm={() => void detach()} />}
   </div>;
