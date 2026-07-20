@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { parseSeoulDateTimeInput, toSeoulDateTimeInput } from "@is2u/core/dates";
 import { ATMOSPHERE_CATEGORY_DEFINITIONS, ATMOSPHERES, EMOTION_CATEGORY_DEFINITIONS, EMOTIONS, memoryDisplayTitle, userFacingSentence } from "@is2u/core/types";
 import { Button, Field, InlineNotice, Input, MissionNote, Select, StatusSticker, Textarea } from "../../../../components/ui";
 import { PaperConfirmDialog } from "../../../../components/paper-dialog";
@@ -158,6 +159,8 @@ export function MissionView({ id }: { id: string }) {
   const [emotionId, setEmotionId] = useState("");
   const [customEmotion, setCustomEmotion] = useState("");
   const [dateEventId, setDateEventId] = useState("");
+  const [firstPinnedAt, setFirstPinnedAt] = useState("");
+  const [firstPinnedAtChanged, setFirstPinnedAtChanged] = useState(false);
   const [events, setEvents] = useState<DateEventOption[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -206,6 +209,8 @@ export function MissionView({ id }: { id: string }) {
     setEmotionId(selected?.id ?? "");
     setCustomEmotion(selected ? "" : current.memory.emotion ?? "");
     setDateEventId(current.dateEvent?.id ?? "");
+    setFirstPinnedAt(toSeoulDateTimeInput(current.memory.firstPinnedAt));
+    setFirstPinnedAtChanged(false);
     setFile(null);
     setProgress(null);
     setNotice(null);
@@ -255,6 +260,11 @@ export function MissionView({ id }: { id: string }) {
   async function performComplete() {
     const mission = payload?.mission;
     if (!mission || busy) return;
+    const parsedFirstPinnedAt = redoing ? parseSeoulDateTimeInput(firstPinnedAt) : null;
+    if (redoing && (!parsedFirstPinnedAt || parsedFirstPinnedAt.getTime() > Date.now())) {
+      setNotice({ tone: "error", text: "날짜와 시간은 지금보다 이후로 정할 수 없어요" });
+      return;
+    }
     if (["photo", "video", "audio"].includes(mission.type) && !file && !redoing) {
       setNotice({ tone: "error", text: "먼저 남길 것을 하나 담아주세요" });
       return;
@@ -272,7 +282,7 @@ export function MissionView({ id }: { id: string }) {
       if (redoing && hasMedia && !file && payload.memory) {
         await apiFetch(`/api/memories/${payload.memory.id}`, {
           method: "PUT",
-          body: JSON.stringify({ customTitle, text: payload.memory.text, dateEventId: dateEventId || null }),
+          body: JSON.stringify({ customTitle, text: payload.memory.text, dateEventId: dateEventId || null, ...(firstPinnedAtChanged ? { firstPinnedAt: parsedFirstPinnedAt?.toISOString() } : {}) }),
         });
         setNotice({ tone: "success", text: "추억을 수정했어요" });
         window.setTimeout(() => window.location.assign("/home"), 500);
@@ -289,6 +299,7 @@ export function MissionView({ id }: { id: string }) {
             : mission.type === "emotion" && !emotionId ? customEmotion.trim() : undefined,
           customTitle: redoing ? customTitle : undefined,
           dateEventId: redoing ? dateEventId || null : undefined,
+          firstPinnedAt: redoing && firstPinnedAtChanged ? parsedFirstPinnedAt?.toISOString() : undefined,
           idempotencyKey: crypto.randomUUID(),
           replaceExisting: redoing,
           deferReplacement: redoing && hasMedia,
@@ -355,7 +366,7 @@ export function MissionView({ id }: { id: string }) {
   if (mission.status === "completed" && payload.memory && !redoing) {
     const memory = payload.memory;
     const hasOriginal = Boolean(findAsset(memory, "original"));
-    const wasEdited = new Date(memory.updatedAt).getTime() - new Date(memory.firstPinnedAt).getTime() > 1000;
+    const wasEdited = new Date(memory.updatedAt).getTime() - new Date(memory.createdAt).getTime() > 1000;
     const role = payload.recipient.roleLabel === "남자친구" ? "boyfriend" : "girlfriend";
     const displayTitle = memoryDisplayTitle({ type: memory.type, customTitle: memory.customTitle, missionTitle: mission.copy.title });
     return <div className={`mission-detail-sheet person-${role} ${removing ? "removing" : ""}`}>
@@ -398,6 +409,7 @@ export function MissionView({ id }: { id: string }) {
     {mission.type === "photo" && <CapturePicker kind="photo" file={file} disabled={busy} onFile={setFile} />}
     {mission.type === "video" && <CapturePicker kind="video" file={file} disabled={busy} onFile={setFile} />}
     {mission.type === "audio" && <div className="audio-capture">{recordingSeconds === null ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void recordAudio()}>{file ? "다시 녹음하기" : "10초 소리 담기"}</Button> : <Button type="button" variant="secondary" disabled={busy} onClick={() => recorder.current?.stop()}><span className="recording-count">{recordingSeconds}</span> · 녹음 마치기</Button>}{file && <AudioReview file={file} />}</div>}
+    {redoing && <Field label="날짜와 시간" hint="홈에 표시되는 시간"><Input type="datetime-local" value={firstPinnedAt} max={toSeoulDateTimeInput(new Date())} required onChange={(event) => { setFirstPinnedAt(event.target.value); setFirstPinnedAtChanged(true); }} /></Field>}
     {redoing && <Field label="연결할 약속" hint="선택 사항"><Select value={dateEventId} onChange={(event) => setDateEventId(event.target.value)}><option value="">약속에 연결하지 않기</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title || "이름 없는 약속"}</option>)}</Select></Field>}
     {progress !== null && <div className="paper-progress"><progress max={100} value={progress}>{progress}%</progress><span>{progress}%</span></div>}
     {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}

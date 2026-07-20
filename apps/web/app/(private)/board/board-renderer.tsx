@@ -3,6 +3,7 @@
 import { memo, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { hangingPath, hangingPoint, itemCenter, linkingPaths } from "./board-geometry";
 import { BOARD_STICKERS, normalizeBoardPieceStyle } from "../../../lib/board-style";
+import { StickerGraphic } from "./board-sticker-graphic";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -286,7 +287,7 @@ function BoardPiece({ item, url, mode = "view", selected = false, multiSelected 
     <div className="board-piece-surface">
       {item.elementType === "image" && (url ? <div className="board-image-container" style={{ width: "100%", height: "100%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}><span className="board-object-ground" aria-hidden="true" /><div className="board-image-bg" style={{ width: "100%", height: "100%", backgroundImage: `url(${url})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }} /><img className="board-free-image" src={url} alt={item.asset?.originalFilename ?? "보드 사진"} loading={eager ? "eager" : "lazy"} draggable={false} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} /></div> : <span className="board-image-loading">사진을 펼치고 있어요</span>)}
       {(item.elementType === "note" || item.elementType === "label") && <BoardNotePaper shape={style.shape} textStyle={style.textStyle}>{item.textContent}</BoardNotePaper>}
-      {item.elementType === "sticker" && <div className={`board-free-sticker sticker-${sticker.id}`} aria-hidden="true">{sticker.glyph}</div>}
+      {item.elementType === "sticker" && <div className={`board-free-sticker sticker-${sticker.id}`} aria-hidden="true"><StickerGraphic id={sticker.id} variant={style.stickerVariant ?? "outline"} /></div>}
       {item.elementType === "bundle" && item.group && <div className={`board-group-stack group-${item.group.style}`}><i aria-hidden="true" /><i aria-hidden="true" />{memory && <MemoryVisual memory={memory} url={url} eager={eager} />}<div className="board-group-label"><strong>{item.group.name}</strong><small>{item.group.count}개의 추억</small></div></div>}
       {item.elementType === "memory" && item.memory && <MemoryVisual memory={item.memory} url={url} eager={eager} />}
     </div>

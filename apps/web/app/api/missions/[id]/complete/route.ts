@@ -79,7 +79,8 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
       emotion,
       idempotencyKey: input.idempotencyKey,
       pendingReplacement,
-      firstPinnedAt: existing?.firstPinnedAt ?? now,
+      createdAt: replacing ? existing!.createdAt : now,
+      firstPinnedAt: replacing ? input.firstPinnedAt ?? existing!.firstPinnedAt : now,
       updatedAt: now,
     }).returning();
     if (replacing && !pendingReplacement) {

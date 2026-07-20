@@ -6,20 +6,24 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { Button, Field, InlineNotice, Input, Textarea } from "../../../components/ui";
 import { PaperConfirmDialog } from "../../../components/paper-dialog";
 import { DetailBackLink, DetailTopline } from "../../../components/detail-topline";
-import { apiFetch } from "../../../lib/client";
+import { ApiError, apiFetch } from "../../../lib/client";
 import { uploadBoardImage } from "../../../lib/upload-client";
 import {
   BOARD_PAPER_SHAPES,
   BOARD_STICKERS,
   BOARD_TEXT_STYLES,
   boardPaperDimensions,
+  formatBoardDateRange,
+  isValidBoardDate,
   normalizeBoardPieceStyle,
   type BoardPaperShape,
   type BoardStickerId,
+  type BoardStickerVariant,
   type BoardTextStyle,
 } from "../../../lib/board-style";
-import { AttachmentPicker, PaperSwatches, StickerPicker } from "./board-controls";
+import { AttachmentPicker, PaperSwatches, StickerPicker, StickerVariantPicker } from "./board-controls";
 import { BoardArtwork, BoardNotePaper, MemoryDetailCard } from "./board-renderer";
+import { StickerGraphic } from "./board-sticker-graphic";
 import { BoardBottomSheet, type BoardBottomSheetHandle } from "./board-bottom-sheet";
 import { boundedGroupDelta, clamp as clampNumber, hangingLayout, hangingPath, linkingPaths } from "./board-geometry";
 import {
@@ -48,11 +52,6 @@ const dateFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul",
 
 function todayInSeoul() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
-
-function boardDateLabel(value: string) {
-  const [year, month, day] = value.split("-");
-  return year && month && day ? `${year}. ${month}. ${day}` : "";
 }
 
 export async function waitForBoardCaptureReady(capture: HTMLElement) {
@@ -198,19 +197,21 @@ function NoteDialog({ boardId, onClose, onDone }: { boardId: string; onClose: ()
   const [color, setColor] = useState("butter");
   const [attachment, setAttachment] = useState<"pin" | "tape" | "none">("tape");
   const [text, setText] = useState("");
-  const [dateValue, setDateValue] = useState(todayInSeoul);
+  const [dateStart, setDateStart] = useState(todayInSeoul);
+  const [dateEnd, setDateEnd] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialog = usePaperDialogFocus(onClose, "input, textarea");
   const definition = BOARD_PAPER_SHAPES.find((option) => option.id === shape) ?? BOARD_PAPER_SHAPES[0];
   const kind = definition.elementType;
   const dimensions = boardPaperDimensions(kind, shape);
-  const content = shape === "date" ? boardDateLabel(dateValue) : text.trim();
+  const content = shape === "date" ? formatBoardDateRange(dateStart, dateEnd || undefined) : text.trim();
   async function save() {
     if (!content) { setError(shape === "date" ? "표시할 날짜를 골라주세요" : "메모 내용을 적어주세요"); return; }
+    if (shape === "date" && dateEnd && dateEnd < dateStart) { setError("마지막 날짜는 시작 날짜보다 빠를 수 없어요"); return; }
     setBusy(true); setError("");
-    try { await apiFetch("/api/board/items", { method: "POST", body: JSON.stringify({ boardId, elementType: kind, textContent: content, styleJson: { color, attachment, shape, textStyle, shadow: "firm" } }) }); await onDone(); onClose(); }
-    catch { setError("메모지를 붙이지 못했어요"); }
+    try { await apiFetch("/api/board/items", { method: "POST", body: JSON.stringify({ boardId, elementType: kind, textContent: content, styleJson: { color, attachment, shape, textStyle, shadow: "firm", ...(shape === "date" ? { dateStart, ...(dateEnd ? { dateEnd } : {}) } : {}) } }) }); await onDone(); onClose(); }
+    catch (caught) { setError(caught instanceof ApiError && caught.status === 400 ? caught.message : "메모지를 붙이지 못했어요"); }
     finally { setBusy(false); }
   }
   return <div className="board-dialog-backdrop"><section ref={dialog} className="board-note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title"><p className="paper-label">WRITE A LITTLE NOTE</p><h2 id="note-dialog-title">메모지 붙이기</h2>
@@ -225,12 +226,45 @@ function NoteDialog({ boardId, onClose, onDone }: { boardId: string; onClose: ()
     </div>
     <div><span className="tool-field-label">종이 모양</span><div className="paper-shape-grid">{BOARD_PAPER_SHAPES.map((option) => <button key={option.id} type="button" aria-pressed={shape === option.id} onClick={() => { setShape(option.id); setError(""); }}><strong>{option.label}</strong><small>{option.description}</small></button>)}</div></div>
     <div><span className="tool-field-label">글씨</span><div className="paper-choice-row">{BOARD_TEXT_STYLES.map((option) => <button key={option.id} type="button" aria-pressed={textStyle === option.id} onClick={() => setTextStyle(option.id)}>{option.label}</button>)}</div></div>
-    {shape === "date" ? <><Field label="보드에 표시할 날짜"><Input type="date" value={dateValue} autoFocus onChange={(event) => setDateValue(event.target.value)} /></Field><p className="tool-hand-note">약속과 연결되지 않고 보드에 날짜만 표시해요</p></> : <Field label="내용"><Textarea rows={3} maxLength={500} value={text} autoFocus onChange={(event) => setText(event.target.value)} /></Field>}
+    {shape === "date" ? <><div className="board-date-range-fields"><Field label="시작 날짜"><Input type="date" value={dateStart} autoFocus onChange={(event) => { setDateStart(event.target.value); if (dateEnd && event.target.value > dateEnd) setDateEnd(""); setError(""); }} /></Field><Field label="마지막 날짜" hint="선택 사항"><Input type="date" min={dateStart} value={dateEnd} onChange={(event) => { setDateEnd(event.target.value); setError(""); }} /></Field></div><p className="tool-hand-note">마지막 날짜를 비워두면 하루만 표시해요</p></> : <Field label="내용"><Textarea rows={3} maxLength={500} value={text} autoFocus onChange={(event) => setText(event.target.value)} /></Field>}
     <div><span className="tool-field-label">종이색</span><PaperSwatches value={color} onChange={setColor} /></div><div><span className="tool-field-label">붙이는 방법</span><AttachmentPicker value={attachment} onChange={setAttachment} /></div>{error && <InlineNotice tone="error">{error}</InlineNotice>}<div className="form-actions"><Button variant="quiet" onClick={onClose}>닫기</Button><Button disabled={busy} onClick={() => void save()}>{busy ? "붙이고 있어요…" : "종이 붙이기"}</Button></div></section></div>;
+}
+
+function dateRangeFromItem(item: BoardItem): { start: string; end: string } {
+  const style = normalizeBoardPieceStyle(item.styleJson, item.elementType);
+  if (style.dateStart) return { start: style.dateStart, end: style.dateEnd ?? "" };
+  const matches = [...(item.textContent ?? "").matchAll(/(\d{4})\.\s*(\d{2})\.\s*(\d{2})/gu)]
+    .map((matched) => `${matched[1]}-${matched[2]}-${matched[3]}`)
+    .filter(isValidBoardDate);
+  return { start: matches[0] ?? todayInSeoul(), end: matches[1] ?? "" };
+}
+
+function BoardDateRangeEditor({ item, onApply }: { item: BoardItem; onApply: (change: Partial<BoardItem>) => void }) {
+  const initial = dateRangeFromItem(item);
+  const [start, setStart] = useState(initial.start);
+  const [end, setEnd] = useState(initial.end);
+  const [error, setError] = useState("");
+
+  function apply() {
+    const label = formatBoardDateRange(start, end || undefined);
+    if (!label) { setError(end && end < start ? "마지막 날짜는 시작 날짜보다 빠를 수 없어요" : "표시할 날짜를 확인해 주세요"); return; }
+    const styleJson = { ...item.styleJson, shape: "date" as const, dateStart: start };
+    if (end) styleJson.dateEnd = end;
+    else delete styleJson.dateEnd;
+    setError("");
+    onApply({ textContent: label, styleJson });
+  }
+
+  return <div className="board-date-range-editor">
+    <div className="board-date-range-fields"><Field label="시작 날짜"><Input type="date" value={start} onChange={(event) => { setStart(event.target.value); if (end && event.target.value > end) setEnd(""); setError(""); }} /></Field><Field label="마지막 날짜" hint="선택 사항"><Input type="date" min={start} value={end} onChange={(event) => { setEnd(event.target.value); setError(""); }} /></Field></div>
+    {error && <InlineNotice tone="error">{error}</InlineNotice>}
+    <Button size="small" variant="secondary" onClick={apply}>날짜 반영하기</Button>
+  </div>;
 }
 
 function StickerDialog({ boardId, onClose, onDone }: { boardId: string; onClose: () => void; onDone: () => Promise<void> }) {
   const [sticker, setSticker] = useState<BoardStickerId>("sparkle");
+  const [variant, setVariant] = useState<BoardStickerVariant>("outline");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialog = usePaperDialogFocus(onClose, ".board-sticker-grid button");
@@ -240,7 +274,7 @@ function StickerDialog({ boardId, onClose, onDone }: { boardId: string; onClose:
     setBusy(true);
     setError("");
     try {
-      await apiFetch("/api/board/items", { method: "POST", body: JSON.stringify({ boardId, elementType: "sticker", styleJson: { sticker, attachment: "none", shadow: "soft" } }) });
+      await apiFetch("/api/board/items", { method: "POST", body: JSON.stringify({ boardId, elementType: "sticker", styleJson: { sticker, stickerVariant: variant, attachment: "none", shadow: "soft" } }) });
       await onDone();
       onClose();
     } catch {
@@ -254,8 +288,9 @@ function StickerDialog({ boardId, onClose, onDone }: { boardId: string; onClose:
     <section ref={dialog} className="board-sticker-dialog" role="dialog" aria-modal="true" aria-labelledby="sticker-dialog-title">
       <header><div><p className="paper-label">A LITTLE STICKER</p><h2 id="sticker-dialog-title">스티커 붙이기</h2></div><button type="button" onClick={onClose}>닫기</button></header>
       <p className="sticker-dialog-copy">보드 사이에 작은 표시를 붙여보세요</p>
-      <div className="sticker-dialog-preview" aria-label={`${selected.label} 미리보기`}><span className={`sticker-${selected.id}`} aria-hidden="true">{selected.glyph}</span><small>{selected.label}</small></div>
+      <div className="sticker-dialog-preview" aria-label={`${selected.label} ${variant === "filled" ? "채움" : "선"} 미리보기`}><StickerGraphic id={selected.id} variant={variant} className={`sticker-${selected.id}`} /><small>{selected.label}</small></div>
       <StickerPicker value={sticker} onChange={setSticker} />
+      <StickerVariantPicker sticker={sticker} value={variant} onChange={setVariant} />
       {error && <InlineNotice tone="error">{error}</InlineNotice>}
       <div className="form-actions"><Button variant="quiet" onClick={onClose}>닫기</Button><Button disabled={busy} onClick={() => void save()}>{busy ? "붙이는 중…" : "스티커 붙이기"}</Button></div>
     </section>
@@ -1586,7 +1621,7 @@ export function BoardView({ boardId }: { boardId: string }) {
       {payload.canEdit && editMode && panelOpen && <div className="board-toolbox-slot">
       <BoardBottomSheet ref={sheetRef} className={`board-bottom-sheet desktop-toolbox context-${contextMode}`} title={toolboxTitle} headerAction={
           <button type="button" className="multi-mode-toggle" aria-pressed={multiMode} onClick={() => { setMultiMode((current) => !current); setSelectedItemIds([]); setSelectedThreadId(null); }}>
-            <span>여러 장 고르기</span>
+            <span>여러 장</span>
           </button>
         }>
         {contextMode === "add" && <div className="tool-paper-grid">
@@ -1611,6 +1646,7 @@ export function BoardView({ boardId }: { boardId: string }) {
             <div className="paper-choice-row">{BOARD_TEXT_STYLES.map((option) => <button key={option.id} type="button" aria-pressed={(selectedPaperStyle.textStyle ?? "default") === option.id} onClick={() => transformSelected({ styleJson: { ...selectedItem.styleJson, shape: selectedPaperStyle.shape, textStyle: option.id } })}>{option.label}</button>)}</div>
             <span className="tool-field-label">종이색</span>
             <PaperSwatches value={selectedItem.styleJson.color ?? "cream"} onChange={(color) => transformSelected({ styleJson: { ...selectedItem.styleJson, color } })} />
+            {selectedPaperStyle.shape === "date" && <BoardDateRangeEditor key={selectedItem.id} item={selectedItem} onApply={transformSelected} />}
           </>}
           {selectedItem.elementType === "memory" && <>
             <span className="tool-field-label">추억 분위기</span>
@@ -1619,6 +1655,8 @@ export function BoardView({ boardId }: { boardId: string }) {
           {selectedItem.elementType === "sticker" && <>
             <span className="tool-field-label">스티커 모양</span>
             <StickerPicker value={(BOARD_STICKERS.some((sticker) => sticker.id === selectedItem.styleJson.sticker) ? selectedItem.styleJson.sticker : "sparkle") as BoardStickerId} onChange={(sticker) => transformSelected({ styleJson: { ...selectedItem.styleJson, sticker, attachment: "none" } })} />
+            <span className="tool-field-label">채움 방식</span>
+            <StickerVariantPicker sticker={(BOARD_STICKERS.some((sticker) => sticker.id === selectedItem.styleJson.sticker) ? selectedItem.styleJson.sticker : "sparkle") as BoardStickerId} value={selectedItem.styleJson.stickerVariant ?? "outline"} onChange={(stickerVariant) => transformSelected({ styleJson: { ...selectedItem.styleJson, stickerVariant, attachment: "none" } })} />
           </>}
           {selectedHangingThread ? <button type="button" onClick={() => void removeThreadMember(selectedItem.id)}>실에서 분리하기</button> : selectedItem.elementType !== "sticker" && <><span className="tool-field-label">붙이는 방법</span><AttachmentPicker value={["pin", "tape", "none"].includes(selectedItem.styleJson.attachment ?? "") ? selectedItem.styleJson.attachment! : selectedItem.styleJson.attachment === "clip" ? "none" : "pin"} onChange={(attachment) => transformSelected({ styleJson: { ...selectedItem.styleJson, attachment } })} /></>}
           <button type="button" className="danger paper-detach" onClick={() => setConfirmDetach(selectedItem.id)}>보드에서 떼기</button>
@@ -1632,7 +1670,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         <BoardArtwork items={items.filter((item) => !item.id.startsWith("upload-"))} threads={threads} assetOverrides={assetOverrides} mode="export" />
         {includeExportFooter && (
           <footer className="board-export-footer">
-            <div className="export-footer-title">{payload?.board.title}</div>
+            <div className="export-footer-title"><strong>{payload?.board.title}</strong>{payload?.board.description && <span>{payload.board.description}</span>}</div>
             <div className="export-footer-brand">
               <span>그대로 멈춰라</span>
               <small>is2u.today</small>

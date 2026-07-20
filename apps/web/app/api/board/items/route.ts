@@ -8,24 +8,37 @@ import { getMediaR2 } from "@is2u/core/r2";
 import { BOARD_HEIGHT, BOARD_WIDTH, requireOwnBoard, requireVisibleMemory } from "../../../../lib/board";
 import {
   BOARD_STICKER_IDS,
+  BOARD_STICKER_VARIANT_IDS,
   BOARD_STORED_PAPER_SHAPE_IDS,
   BOARD_TEXT_STYLE_IDS,
   boardPaperDimensions,
+  formatBoardDateRange,
+  isSafeBoardText,
+  isValidBoardDate,
+  normalizeBoardText,
   normalizeBoardPieceStyle,
 } from "../../../../lib/board-style";
 import { requireCsrf, requireSession } from "../../../../lib/auth";
 import { HttpError, json, readJson, withApiErrors } from "../../../../lib/http";
 
 const elementTypes = ["memory", "image", "note", "label", "sticker"] as const;
-const safeText = z.string().trim().max(500).refine((value) => !/[<>\u0000-\u001f\u007f]/u.test(value), "일반 문자만 입력해 주세요");
+const safeText = z.string()
+  .transform(normalizeBoardText)
+  .pipe(z.string().max(500).refine(isSafeBoardText, "일반 문자만 입력해 주세요"));
 const styleSchema = z.object({
   color: z.enum(["butter", "cream", "sky", "strawberry", "leaf", "lavender", "rose"]).optional(),
   attachment: z.enum(["pin", "tape", "clip", "none"]).optional(),
   shape: z.enum(BOARD_STORED_PAPER_SHAPE_IDS).optional(),
   textStyle: z.enum(BOARD_TEXT_STYLE_IDS).optional(),
   sticker: z.enum(BOARD_STICKER_IDS).optional(),
+  stickerVariant: z.enum(BOARD_STICKER_VARIANT_IDS).optional(),
   shadow: z.enum(["none", "soft", "firm"]).optional(),
-}).strict();
+  dateStart: z.string().refine(isValidBoardDate, "시작 날짜를 확인해 주세요").optional(),
+  dateEnd: z.string().refine(isValidBoardDate, "마지막 날짜를 확인해 주세요").optional(),
+}).strict().superRefine((value, context) => {
+  if (value.dateEnd && !value.dateStart) context.addIssue({ code: "custom", path: ["dateStart"], message: "시작 날짜를 먼저 골라주세요" });
+  if (value.dateStart && value.dateEnd && value.dateEnd < value.dateStart) context.addIssue({ code: "custom", path: ["dateEnd"], message: "마지막 날짜는 시작 날짜보다 빠를 수 없어요" });
+});
 
 const createSchema = z.object({
   idempotencyKey: z.uuid().optional(),
@@ -80,8 +93,12 @@ export const POST = withApiErrors(async (request: Request) => {
   const styleJson = normalizeBoardPieceStyle(input.styleJson, input.elementType);
   if (input.elementType === "sticker") {
     styleJson.sticker ??= "sparkle";
+    styleJson.stickerVariant ??= "outline";
     styleJson.attachment = "none";
   }
+  const textContent = input.elementType === "label" && styleJson.shape === "date" && styleJson.dateStart
+    ? formatBoardDateRange(styleJson.dateStart, styleJson.dateEnd)
+    : input.textContent ?? null;
   const dimensions = boardPaperDimensions(input.elementType, styleJson.shape);
   try {
     const [item] = await getDb().insert(boardItems).values({
@@ -90,7 +107,7 @@ export const POST = withApiErrors(async (request: Request) => {
       memoryId: input.memoryId ?? null,
       assetId: input.assetId ?? null,
       elementType: input.elementType,
-      textContent: input.textContent ?? null,
+      textContent,
       styleJson,
       x: Math.min(BOARD_WIDTH - 80, Math.max(0, input.x ?? 180 + (zIndex % 5) * 44)),
       y: Math.min(BOARD_HEIGHT - 60, Math.max(0, input.y ?? 180 + (zIndex % 4) * 42)),
@@ -132,6 +149,10 @@ export const PATCH = withApiErrors(async (request: Request) => {
         const current = currentById.get(input.id)!;
         const width = input.width ?? current.width;
         const height = input.height ?? current.height;
+        const styleJson = input.styleJson !== undefined ? normalizeBoardPieceStyle(input.styleJson, current.elementType) : normalizeBoardPieceStyle(current.styleJson as Record<string, string>, current.elementType);
+        const textContent = current.elementType === "label" && styleJson.shape === "date" && styleJson.dateStart
+          ? formatBoardDateRange(styleJson.dateStart, styleJson.dateEnd)
+          : input.textContent;
         const [item] = await tx.update(boardItems).set({
           ...(input.x !== undefined ? { x: Math.min(BOARD_WIDTH - width, Math.max(0, input.x)) } : {}),
           ...(input.y !== undefined ? { y: Math.min(BOARD_HEIGHT - height, Math.max(0, input.y)) } : {}),
@@ -139,8 +160,8 @@ export const PATCH = withApiErrors(async (request: Request) => {
           ...(input.height !== undefined ? { height } : {}),
           ...(input.rotationTenths !== undefined ? { rotationTenths: input.rotationTenths } : {}),
           ...(input.zIndex !== undefined ? { zIndex: input.zIndex } : {}),
-          ...(input.textContent !== undefined ? { textContent: input.textContent } : {}),
-          ...(input.styleJson !== undefined ? { styleJson: normalizeBoardPieceStyle(input.styleJson, current.elementType) } : {}),
+          ...(textContent !== undefined ? { textContent } : {}),
+          ...(input.styleJson !== undefined ? { styleJson } : {}),
           updatedAt: new Date(),
         }).where(and(eq(boardItems.id, current.id), eq(boardItems.boardId, boardId))).returning();
         results.push(item);
@@ -154,6 +175,10 @@ export const PATCH = withApiErrors(async (request: Request) => {
   const current = await requireOwnedItem(session.user.id, input.id);
   const width = input.width ?? current.width;
   const height = input.height ?? current.height;
+  const styleJson = input.styleJson !== undefined ? normalizeBoardPieceStyle(input.styleJson, current.elementType) : normalizeBoardPieceStyle(current.styleJson as Record<string, string>, current.elementType);
+  const textContent = current.elementType === "label" && styleJson.shape === "date" && styleJson.dateStart
+    ? formatBoardDateRange(styleJson.dateStart, styleJson.dateEnd)
+    : input.textContent;
   const [item] = await getDb().update(boardItems).set({
     ...(input.x !== undefined ? { x: Math.min(BOARD_WIDTH - width, Math.max(0, input.x)) } : {}),
     ...(input.y !== undefined ? { y: Math.min(BOARD_HEIGHT - height, Math.max(0, input.y)) } : {}),
@@ -161,8 +186,8 @@ export const PATCH = withApiErrors(async (request: Request) => {
     ...(input.height !== undefined ? { height } : {}),
     ...(input.rotationTenths !== undefined ? { rotationTenths: input.rotationTenths } : {}),
     ...(input.zIndex !== undefined ? { zIndex: input.zIndex } : {}),
-    ...(input.textContent !== undefined ? { textContent: input.textContent } : {}),
-    ...(input.styleJson !== undefined ? { styleJson: normalizeBoardPieceStyle(input.styleJson, current.elementType) } : {}),
+    ...(textContent !== undefined ? { textContent } : {}),
+    ...(input.styleJson !== undefined ? { styleJson } : {}),
     updatedAt: new Date(),
   }).where(and(eq(boardItems.id, current.id), eq(boardItems.boardId, current.boardId))).returning();
   await getDb().update(memoryBoards).set({ updatedAt: new Date() }).where(eq(memoryBoards.id, current.boardId));

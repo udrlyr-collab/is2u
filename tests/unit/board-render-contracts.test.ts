@@ -5,12 +5,17 @@ import {
   BOARD_PAPER_SHAPES,
   BOARD_STICKER_IDS,
   BOARD_STICKERS,
+  BOARD_STICKER_VARIANT_IDS,
   BOARD_STORED_PAPER_SHAPE_IDS,
   BOARD_TEXT_STYLE_IDS,
   BOARD_TEXT_STYLES,
   boardPaperDimensions,
+  formatBoardDateRange,
+  isSafeBoardText,
+  normalizeBoardText,
   normalizeBoardPieceStyle,
 } from "../../apps/web/lib/board-style";
+import { shortPaperLabel, type BoardItem } from "../../apps/web/app/(private)/board/board-types";
 
 const VIEW_PATH = "apps/web/app/(private)/board/board-view.tsx";
 const RENDERER_PATH = "apps/web/app/(private)/board/board-renderer.tsx";
@@ -117,7 +122,8 @@ describe("board rendering contracts", () => {
     expect(styles).toMatch(/\.board-piece\.shadow-firm\s*>\s*\.board-export-piece-shadow/);
     expect(styles).toMatch(/\.board-piece\.piece-image\s*>\s*\.board-export-piece-shadow/);
     expect(styles).toMatch(/\.board-share-capture\s+\.board-object-ground\s*\{\s*display:\s*none/);
-    expect(styles).toMatch(/\.board-share-capture\s+\.board-piece\.piece-sticker\.shadow-none\s+\.board-free-sticker\s*\{\s*text-shadow:\s*none/);
+    expect(styles).toMatch(/\.board-share-capture\s+\.board-piece\.piece-sticker\.shadow-soft\s+\.board-free-sticker\s*\{\s*filter:\s*drop-shadow/);
+    expect(styles).toMatch(/\.board-share-capture\s+\.board-piece\.piece-sticker\.shadow-none\s+\.board-free-sticker\s*\{\s*filter:\s*none/);
     expect(styles).toMatch(/\.board-piece\.shadow-firm\s*>\s*\.board-piece-surface/);
     expect(styles).toMatch(/\.board-piece\.shadow-none\s*>\s*\.board-piece-surface/);
     expect(styles).toMatch(/\.board-piece\.piece-note\.shadow-soft\s+\.board-free-note/);
@@ -149,6 +155,15 @@ describe("board rendering contracts", () => {
     expect(view).toContain("windowHeight: exportHeight");
     expect(view).toContain("{includeExportFooter && (");
     expect(styles).toContain(".board-share-capture.without-footer { height: 1400px; }");
+  });
+
+  it("renders a saved board memo beside the export title without letting either label overflow", async () => {
+    const [view, styles] = await Promise.all([readFile(VIEW_PATH, "utf8"), readFile(STYLES_PATH, "utf8")]);
+    expect(view).toContain("payload?.board.description && <span>{payload.board.description}</span>");
+    expect(styles).toContain(".export-footer-title > strong");
+    expect(styles).toContain(".export-footer-title > span");
+    expect(styles).toMatch(/\.export-footer-title > span\s*\{[^}]*font-weight:\s*350/s);
+    expect(styles).toMatch(/\.export-footer-title > strong,\s*\.export-footer-title > span\s*\{[^}]*text-overflow:\s*ellipsis/s);
   });
 });
 
@@ -202,6 +217,8 @@ describe("board paper style contracts", () => {
     expect(route).toContain("z.enum(BOARD_STORED_PAPER_SHAPE_IDS)");
     expect(route).toContain("z.enum(BOARD_TEXT_STYLE_IDS)");
     expect(route).toContain("boardPaperDimensions");
+    expect(route).toContain("formatBoardDateRange");
+    expect(route).toContain("normalizeBoardText");
     expect(route).toContain("normalizeBoardPieceStyle(input.styleJson, input.elementType)");
   });
 
@@ -229,23 +246,61 @@ describe("board paper style contracts", () => {
   });
 
   it("uses one sticker catalog across creation, validation, rendering and editing", async () => {
-    const [view, renderer, controls, route] = await Promise.all([
+    const [view, renderer, controls, route, graphic] = await Promise.all([
       readFile(VIEW_PATH, "utf8"),
       readFile(RENDERER_PATH, "utf8"),
       readFile("apps/web/app/(private)/board/board-controls.tsx", "utf8"),
       readFile("apps/web/app/api/board/items/route.ts", "utf8"),
+      readFile("apps/web/app/(private)/board/board-sticker-graphic.tsx", "utf8"),
     ]);
 
     expect(BOARD_STICKERS).toHaveLength(12);
     expect(BOARD_STICKER_IDS).toEqual(BOARD_STICKERS.map(({ id }) => id));
     expect(new Set(BOARD_STICKER_IDS).size).toBe(BOARD_STICKER_IDS.length);
+    expect(BOARD_STICKER_VARIANT_IDS).toEqual(["outline", "filled"]);
     expect(route).toContain('"memory", "image", "note", "label", "sticker"');
     expect(route).toContain("z.enum(BOARD_STICKER_IDS)");
+    expect(route).toContain("z.enum(BOARD_STICKER_VARIANT_IDS)");
     expect(route).toContain("idempotencyKey: z.uuid().optional()");
     expect(renderer).toContain("BOARD_STICKERS.find");
+    expect(renderer).toContain("style.stickerVariant ?? \"outline\"");
     expect(controls).toContain("BOARD_STICKERS.map");
+    expect(controls).toContain("StickerVariantPicker");
+    expect(graphic).toContain('variant === "filled"');
     expect(view).toContain("<StickerDialog");
     expect(view).toContain("<StickerPicker");
+    expect(view).toContain("<StickerVariantPicker");
+  });
+
+  it("accepts multiline paper notes while continuing to reject unsafe control characters", () => {
+    expect(normalizeBoardText("  첫 줄\r\n둘째 줄  ")).toBe("첫 줄\n둘째 줄");
+    expect(isSafeBoardText("첫 줄\n둘째 줄")).toBe(true);
+    expect(isSafeBoardText("메모\u0000")).toBe(false);
+    expect(isSafeBoardText("<script>")).toBe(false);
+    expect(isSafeBoardText("가".repeat(501))).toBe(false);
+  });
+
+  it("formats one-day and ranged date labels without timezone conversion", () => {
+    expect(formatBoardDateRange("2026-07-17")).toBe("2026. 07. 17");
+    expect(formatBoardDateRange("2026-07-17", "2026-07-19")).toBe("2026. 07. 17 - 2026. 07. 19");
+    expect(formatBoardDateRange("2026-07-17", "2026-07-17")).toBe("2026. 07. 17");
+    expect(formatBoardDateRange("2026-02-30")).toBe("");
+    expect(formatBoardDateRange("2026-07-19", "2026-07-17")).toBe("");
+    expect(normalizeBoardPieceStyle({ shape: "date", dateStart: "2026-07-17", dateEnd: "2026-07-19" }, "label")).toMatchObject({ dateStart: "2026-07-17", dateEnd: "2026-07-19" });
+  });
+
+  it("keeps long board labels short in the toolbox while the full accessible label stays separate", async () => {
+    const memory = { elementType: "memory", memory: { title: "최후의 만찬이 이런 모습이었을까 정말 궁금한 오늘의 추억" } } as BoardItem;
+    const bundle = { elementType: "bundle", group: { name: "아주 길고 길어서 패널을 밀어내면 안 되는 추억 번들" } } as BoardItem;
+    expect(Array.from(shortPaperLabel(memory))).toHaveLength(18);
+    expect(shortPaperLabel(memory).endsWith("…")).toBe(true);
+    expect(shortPaperLabel(bundle).endsWith("…")).toBe(true);
+
+    const [view, styles] = await Promise.all([readFile(VIEW_PATH, "utf8"), readFile(STYLES_PATH, "utf8")]);
+    expect(view).toContain("shortPaperLabel(selectedItem)");
+    expect(styles).toMatch(/\.board-toolbox > header\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
+    expect(styles).toMatch(/\.compact-adjuster input, \.thread-curve-controls input\s*\{[^}]*min-width:\s*0/s);
+    expect(styles).toContain("@media (max-width: 360px)");
   });
 
   it("scales memory decorations and exposes visual attachment and memory theme controls", async () => {

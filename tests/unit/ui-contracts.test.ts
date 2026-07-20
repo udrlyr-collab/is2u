@@ -205,21 +205,33 @@ describe("redesign data contracts", () => {
     expect(migration).toContain('ALTER TABLE "missions" ADD COLUMN "deleted_at"');
   });
 
-  it("edits text and event links and replaces owned media without changing the first pinned time", async () => {
-    const [manualDetail, missionDetail, replacement, finalize] = await Promise.all([
+  it("edits text, event links, and Seoul pinned time while preserving created time across replacements", async () => {
+    const [manualDetail, missionDetail, editRoute, replacement, missionComplete, finalize] = await Promise.all([
       readFile("apps/web/app/(private)/memories/[id]/memory-detail-view.tsx", "utf8"),
       readFile("apps/web/app/(private)/missions/[id]/mission-view.tsx", "utf8"),
+      readFile("apps/web/app/api/memories/[id]/route.ts", "utf8"),
       readFile("apps/web/app/api/memories/[id]/replacement/route.ts", "utf8"),
+      readFile("apps/web/app/api/missions/[id]/complete/route.ts", "utf8"),
       readFile("apps/web/app/api/memories/[id]/finalize-replacement/route.ts", "utf8"),
     ]);
     for (const source of [manualDetail, missionDetail]) {
       expect(source).toContain("수정 내용 저장하기");
       expect(source).toContain("연결할 약속");
+      expect(source).toContain("날짜와 시간");
+      expect(source).toContain("parseSeoulDateTimeInput");
+      expect(source).toContain("toSeoulDateTimeInput");
+      expect(source).toContain("memory.createdAt");
+      expect(source).toContain("firstPinnedAtChanged");
+      expect(source).toContain("firstPinnedAtChanged ? { firstPinnedAt:");
       expect(source).toContain("finalize-replacement");
     }
     expect(manualDetail).toContain("FilePicker");
     expect(manualDetail).toContain("AudioPicker");
-    expect(replacement).toContain("firstPinnedAt: current.firstPinnedAt");
+    expect(editRoute).toContain("firstPinnedAt: input.firstPinnedAt === undefined ? current.firstPinnedAt : input.firstPinnedAt");
+    expect(replacement).toContain("createdAt: current.createdAt");
+    expect(replacement).toContain("firstPinnedAt: input.firstPinnedAt === undefined ? current.firstPinnedAt : input.firstPinnedAt");
+    expect(missionComplete).toContain("createdAt: replacing ? existing!.createdAt : now");
+    expect(missionComplete).toContain("firstPinnedAt: replacing ? input.firstPinnedAt ?? existing!.firstPinnedAt : now");
     expect(finalize).toContain("pendingReplacement: false");
     expect(finalize).toContain("deletedAt: now, purgeAfter");
   });

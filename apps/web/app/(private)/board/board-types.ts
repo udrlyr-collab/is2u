@@ -128,15 +128,13 @@ export function paperLabel(item: BoardItem): string {
 }
 
 export function shortPaperLabel(item: BoardItem): string {
-  if (item.elementType === "note" || item.elementType === "label") {
-    const text = item.textContent ?? "메모";
-    return text.length > 12 ? text.slice(0, 11) + "…" : text;
-  }
-  if (item.elementType === "sticker") return `${item.styleJson.sticker ?? "장식"} 스티커`;
-  if (item.elementType === "image") {
-    if (item.memory?.title) return item.memory.title;
-    return "붙인 사진";
-  }
-  if (item.elementType === "bundle") return `${item.group?.name ?? "추억"} 번들`;
-  return item.memory?.title ?? "추억";
+  let label: string;
+  if (item.elementType === "note" || item.elementType === "label") label = (item.textContent ?? "메모").replace(/\s+/gu, " ");
+  else if (item.elementType === "sticker") label = `${item.styleJson.sticker ?? "장식"} 스티커`;
+  else if (item.elementType === "image") label = item.memory?.title ?? item.asset?.originalFilename ?? "붙인 사진";
+  else if (item.elementType === "bundle") label = `${item.group?.name ?? "추억"} 번들`;
+  else label = item.memory?.title ?? "추억";
+
+  const characters = Array.from(label.trim());
+  return characters.length > 18 ? `${characters.slice(0, 17).join("")}…` : characters.join("");
 }

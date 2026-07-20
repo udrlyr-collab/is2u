@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseSeoulDateTimeInput, toSeoulDateTimeInput } from "@is2u/core/dates";
 import { memoryDisplayTitle, type MemoryType } from "@is2u/core/types";
 import { Button, Field, InlineNotice, Input, Select, Textarea } from "../../../../components/ui";
 import { PaperConfirmDialog } from "../../../../components/paper-dialog";
@@ -9,7 +10,7 @@ import { uploadFile } from "../../../../lib/upload-client";
 import { AudioPicker, FilePicker, type MemoryComposerNotice } from "../../home/manual-memory-composer";
 
 type Asset = { id: string; role: "original" | "preview" | "thumbnail" | "poster"; mimeType: string; processingStatus: "pending" | "processing" | "ready" | "failed" };
-type Memory = { id: string; type: MemoryType; customTitle: string | null; displayTitle: string; text: string | null; firstPinnedAt: string; updatedAt: string; assets: Asset[] };
+type Memory = { id: string; type: MemoryType; customTitle: string | null; displayTitle: string; text: string | null; createdAt: string; firstPinnedAt: string; updatedAt: string; assets: Asset[] };
 type Payload = { memory: Memory; author: { id: string; displayName: string; roleLabel: string }; dateEvent: { id: string; title: string | null } | null; canEdit: boolean; canDelete: boolean };
 type DateEvent = { id: string; title: string | null; status: string; startAt: string; endAt: string };
 
@@ -28,6 +29,8 @@ export function MemoryDetailView({ id, returnBoardId }: { id: string; returnBoar
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [dateEventId, setDateEventId] = useState("");
+  const [firstPinnedAt, setFirstPinnedAt] = useState("");
+  const [firstPinnedAtChanged, setFirstPinnedAtChanged] = useState(false);
   const [events, setEvents] = useState<DateEvent[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -60,6 +63,8 @@ export function MemoryDetailView({ id, returnBoardId }: { id: string; returnBoar
     setTitle(current.memory.customTitle ?? "");
     setText(current.memory.text ?? "");
     setDateEventId(current.dateEvent?.id ?? "");
+    setFirstPinnedAt(toSeoulDateTimeInput(current.memory.firstPinnedAt));
+    setFirstPinnedAtChanged(false);
     setFile(null);
     setProgress(null);
     setEditing(true);
@@ -74,9 +79,14 @@ export function MemoryDetailView({ id, returnBoardId }: { id: string; returnBoar
 
   async function save() {
     if (!payload || busy) return;
+    const parsedFirstPinnedAt = parseSeoulDateTimeInput(firstPinnedAt);
+    if (!parsedFirstPinnedAt || parsedFirstPinnedAt.getTime() > Date.now()) {
+      setNotice("날짜와 시간은 지금보다 이후로 정할 수 없어요");
+      return;
+    }
     setBusy(true); setNotice("");
     try {
-      const body = { customTitle: title, text, dateEventId: dateEventId || null };
+      const body = { customTitle: title, text, dateEventId: dateEventId || null, ...(firstPinnedAtChanged ? { firstPinnedAt: parsedFirstPinnedAt.toISOString() } : {}) };
       if (file && ["photo", "video", "manual_video", "audio"].includes(payload.memory.type)) {
         const created = await apiFetch<{ memory: { id: string } }>(`/api/memories/${id}/replacement`, {
           method: "POST",
@@ -119,7 +129,7 @@ export function MemoryDetailView({ id, returnBoardId }: { id: string; returnBoar
   const poster = memory.assets.find((asset) => asset.role === "poster" && asset.processingStatus === "ready");
   const original = memory.assets.find((asset) => asset.role === "original");
   const displayTitle = memoryDisplayTitle({ type: memory.type, customTitle: memory.customTitle });
-  const edited = new Date(memory.updatedAt).getTime() - new Date(memory.firstPinnedAt).getTime() > 1000;
+  const edited = new Date(memory.updatedAt).getTime() - new Date(memory.createdAt).getTime() > 1000;
   const role = author.roleLabel === "남자친구" ? "boyfriend" : "girlfriend";
 
   return <section className={`mission-detail-sheet person-${role}`}>
@@ -139,6 +149,7 @@ export function MemoryDetailView({ id, returnBoardId }: { id: string; returnBoar
       {(memory.type === "video" || memory.type === "manual_video") && <FilePicker type="video" file={file} onFile={setFile} />}
       {memory.type === "audio" && <AudioPicker file={file} onFile={setFile} onNotice={(next: MemoryComposerNotice) => setNotice(next?.text ?? "")} />}
       {memory.type !== "text" && <p className="edit-file-hint">새 파일을 고르지 않으면 지금 파일을 그대로 보관해요</p>}
+      <Field label="날짜와 시간" hint="홈에 표시되는 시간"><Input type="datetime-local" value={firstPinnedAt} max={toSeoulDateTimeInput(new Date())} required onChange={(event) => { setFirstPinnedAt(event.target.value); setFirstPinnedAtChanged(true); }} /></Field>
       <Field label="연결할 약속" hint="선택 사항"><Select value={dateEventId} onChange={(event) => setDateEventId(event.target.value)}><option value="">약속에 연결하지 않기</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title || "이름 없는 약속"}</option>)}</Select></Field>
       {progress !== null && <div className="paper-progress"><progress max={100} value={progress}>{progress}%</progress><span>{progress}%</span></div>}
       <div className="form-actions"><Button variant="quiet" disabled={busy} onClick={() => setEditing(false)}>돌아가기</Button><Button disabled={busy} onClick={() => void save()}>{busy ? "저장하고 있어요…" : "수정 내용 저장하기"}</Button></div>

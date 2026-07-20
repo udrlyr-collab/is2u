@@ -51,6 +51,7 @@ export const PUT = withApiErrors(async (request: Request, context: Context) => {
     customTitle: input.customTitle === undefined ? current.customTitle : input.customTitle,
     text: input.text === undefined ? current.text : input.text || null,
     dateEventId: input.dateEventId === undefined ? current.dateEventId : input.dateEventId,
+    firstPinnedAt: input.firstPinnedAt === undefined ? current.firstPinnedAt : input.firstPinnedAt,
     updatedAt: new Date(),
   }).where(eq(memories.id, id)).returning();
   await db.insert(auditEvents).values({ actorId: session.user.id, action: "memory.edited", entityType: "memory", entityId: id });

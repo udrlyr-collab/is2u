@@ -19,11 +19,13 @@ export const BOARD_STICKER_IDS = BOARD_STICKERS.map((sticker) => sticker.id) as 
   (typeof BOARD_STICKERS)[number]["id"],
   ...(typeof BOARD_STICKERS)[number]["id"][],
 ];
+export const BOARD_STICKER_VARIANT_IDS = ["outline", "filled"] as const;
 
 export type BoardPaperShape = (typeof BOARD_PAPER_SHAPE_IDS)[number];
 export type BoardStoredPaperShape = (typeof BOARD_STORED_PAPER_SHAPE_IDS)[number];
 export type BoardTextStyle = (typeof BOARD_TEXT_STYLE_IDS)[number];
 export type BoardStickerId = (typeof BOARD_STICKERS)[number]["id"];
+export type BoardStickerVariant = (typeof BOARD_STICKER_VARIANT_IDS)[number];
 export type BoardStyleElementType = "memory" | "image" | "note" | "label" | "sticker" | "bundle";
 
 export type BoardPaperShapeDefinition = {
@@ -60,16 +62,52 @@ export type BoardPieceStyle = {
   shape?: BoardStoredPaperShape;
   textStyle?: BoardTextStyle;
   sticker?: string;
+  stickerVariant?: BoardStickerVariant;
   shadow?: string;
+  dateStart?: string;
+  dateEnd?: string;
 };
 
 export type NormalizedBoardPieceStyle = Omit<BoardPieceStyle, "shape"> & { shape?: BoardPaperShape };
 
 const paperShapeIds = new Set<string>(BOARD_PAPER_SHAPE_IDS);
 const textStyleIds = new Set<string>(BOARD_TEXT_STYLE_IDS);
+const boardDatePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
+export function normalizeBoardText(value: string): string {
+  return value.replace(/\r\n?/gu, "\n").trim();
+}
+
+export function isSafeBoardText(value: string): boolean {
+  return value.length <= 500 && !/[<>\u0000-\u0009\u000b-\u001f\u007f]/u.test(value);
+}
 const paperShapeById = new Map<BoardPaperShape, BoardPaperShapeDefinition>(
   BOARD_PAPER_SHAPES.map((definition) => [definition.id, definition]),
 );
+
+export function isValidBoardDate(value: string | undefined): value is string {
+  if (!value) return false;
+  const matched = boardDatePattern.exec(value);
+  if (!matched) return false;
+  const year = Number(matched[1]);
+  const month = Number(matched[2]);
+  const day = Number(matched[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+export function formatBoardDate(value: string): string {
+  const matched = boardDatePattern.exec(value);
+  return matched && isValidBoardDate(value) ? `${matched[1]}. ${matched[2]}. ${matched[3]}` : "";
+}
+
+export function formatBoardDateRange(start: string, end?: string): string {
+  const startLabel = formatBoardDate(start);
+  if (!startLabel) return "";
+  if (!end || end === start) return startLabel;
+  const endLabel = formatBoardDate(end);
+  return endLabel && end >= start ? `${startLabel} - ${endLabel}` : "";
+}
 
 function defaultPaperShape(elementType?: BoardStyleElementType | string): BoardPaperShape | undefined {
   if (elementType === "note") return "note";
@@ -107,6 +145,16 @@ export function normalizeBoardPieceStyle(
     : fallbackShape;
   if (compatibleShape) normalized.shape = compatibleShape;
   else delete normalized.shape;
+
+  if (normalized.shape !== "date") {
+    delete normalized.dateStart;
+    delete normalized.dateEnd;
+  } else {
+    if (!isValidBoardDate(normalized.dateStart)) delete normalized.dateStart;
+    if (!isValidBoardDate(normalized.dateEnd) || !normalized.dateStart || normalized.dateEnd < normalized.dateStart) delete normalized.dateEnd;
+  }
+
+  if (!BOARD_STICKER_VARIANT_IDS.includes(normalized.stickerVariant as BoardStickerVariant)) delete normalized.stickerVariant;
 
   if (!fallbackShape) delete normalized.textStyle;
   else {

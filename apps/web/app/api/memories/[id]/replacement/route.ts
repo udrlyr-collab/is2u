@@ -51,7 +51,8 @@ export const POST = withApiErrors(async (request: Request, context: Context) => 
     text: input.text === undefined ? current.text : input.text || null,
     idempotencyKey: input.idempotencyKey,
     pendingReplacement: true,
-    firstPinnedAt: current.firstPinnedAt,
+    createdAt: current.createdAt,
+    firstPinnedAt: input.firstPinnedAt === undefined ? current.firstPinnedAt : input.firstPinnedAt,
     updatedAt: now,
   }).returning();
   await db.insert(auditEvents).values({ actorId: session.user.id, action: "memory.replacement_created", entityType: "memory", entityId: replacement.id, metadata: { replaces: current.id } });

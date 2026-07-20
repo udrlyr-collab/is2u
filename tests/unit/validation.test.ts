@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateEventCreateSchema, dateEventSchema, memoryTitleSchema, missionCompletionSchema, safeExtension } from "@is2u/core/validation";
+import { dateEventCreateSchema, dateEventSchema, memoryEditSchema, memoryReplacementSchema, memoryTitleSchema, missionCompletionSchema, safeExtension } from "@is2u/core/validation";
 import { EMOTIONS, memoryDisplayTitle } from "@is2u/core/types";
 
 describe("input validation", () => {
@@ -53,5 +53,19 @@ describe("input validation", () => {
     expect(memoryDisplayTitle({ type: "text" })).toBe("글로 남긴 추억");
     expect(memoryDisplayTitle({ type: "video" })).toBe("영상으로 남긴 추억");
     expect(memoryDisplayTitle({ type: "audio" })).toBe("목소리로 남긴 추억");
+  });
+
+  it("accepts past pinned times and rejects future pinned times in every edit path", () => {
+    const past = "2020-07-17T03:00:00.000Z";
+    const future = "2999-07-17T03:00:00.000Z";
+    expect(memoryEditSchema.parse({ firstPinnedAt: past }).firstPinnedAt).toEqual(new Date(past));
+    expect(memoryReplacementSchema.parse({ firstPinnedAt: past, idempotencyKey: crypto.randomUUID() }).firstPinnedAt).toEqual(new Date(past));
+    expect(missionCompletionSchema.parse({ memoryType: "text", text: "기억", firstPinnedAt: past, idempotencyKey: crypto.randomUUID(), replaceExisting: true }).firstPinnedAt).toEqual(new Date(past));
+    expect(() => memoryEditSchema.parse({ firstPinnedAt: future })).toThrow("날짜와 시간은 지금보다 이후로 정할 수 없어요");
+    expect(() => memoryReplacementSchema.parse({ firstPinnedAt: future, idempotencyKey: crypto.randomUUID() })).toThrow("날짜와 시간은 지금보다 이후로 정할 수 없어요");
+    expect(() => missionCompletionSchema.parse({ memoryType: "text", text: "기억", firstPinnedAt: future, idempotencyKey: crypto.randomUUID(), replaceExisting: true })).toThrow("날짜와 시간은 지금보다 이후로 정할 수 없어요");
+    for (const invalid of [null, 0, true]) {
+      expect(() => memoryEditSchema.parse({ firstPinnedAt: invalid })).toThrow();
+    }
   });
 });

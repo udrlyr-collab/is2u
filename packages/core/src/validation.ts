@@ -93,6 +93,11 @@ const customEmotionSchema = z.string().trim().min(1).max(30).superRefine((value,
   }
 });
 
+export const memoryFirstPinnedAtSchema = z.iso.datetime({ offset: true }).transform((value) => new Date(value)).refine(
+  (value) => value.getTime() <= Date.now(),
+  { message: "날짜와 시간은 지금보다 이후로 정할 수 없어요" },
+);
+
 export const missionCompletionSchema = z.object({
   memoryType: z.enum(MEMORY_TYPES).exclude(["manual_video"]),
   text: z.string().trim().max(300).optional(),
@@ -100,6 +105,7 @@ export const missionCompletionSchema = z.object({
   customEmotion: customEmotionSchema.optional(),
   customTitle: memoryTitleSchema.optional(),
   dateEventId: z.uuid().nullable().optional(),
+  firstPinnedAt: memoryFirstPinnedAtSchema.optional(),
   idempotencyKey: z.uuid(),
   replaceExisting: z.boolean().optional().default(false),
   deferReplacement: z.boolean().optional().default(false),
@@ -127,6 +133,7 @@ const memoryEditFields = {
   customTitle: memoryTitleSchema.optional(),
   text: z.string().trim().max(300).optional().nullable(),
   dateEventId: z.uuid().nullable().optional(),
+  firstPinnedAt: memoryFirstPinnedAtSchema.optional(),
 };
 
 function validateMemoryEditText(value: { text?: string | null }, context: z.RefinementCtx) {
