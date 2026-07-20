@@ -146,7 +146,7 @@ function NoteDialog({ boardId, onClose, onDone }: { boardId: string; onClose: ()
     <div><span className="tool-field-label">종이색</span><PaperSwatches value={color} onChange={setColor} /></div><div><span className="tool-field-label">붙이는 방법</span><div className="paper-choice-row">{[{ id: "tape", label: "테이프" }, { id: "pin", label: "압정" }, { id: "none", label: "그대로" }].map((option) => <button key={option.id} type="button" aria-pressed={attachment === option.id} onClick={() => setAttachment(option.id)}>{option.label}</button>)}</div></div>{error && <InlineNotice tone="error">{error}</InlineNotice>}<div className="form-actions"><Button variant="quiet" onClick={onClose}>닫기</Button><Button disabled={busy} onClick={() => void save()}>{busy ? "붙이고 있어요…" : "종이 붙이기"}</Button></div></section></div>;
 }
 
-function ShareDialog({ status, message, onClose, onShare }: { status: "idle" | "preparing" | "success" | "error"; message: string; onClose: () => void; onShare: () => void }) {
+function ShareDialog({ status, message, includeFooter, onIncludeFooterChange, onClose, onShare }: { status: "idle" | "preparing" | "success" | "error"; message: string; includeFooter: boolean; onIncludeFooterChange: (include: boolean) => void; onClose: () => void; onShare: () => void }) {
   return (
     <div className="board-dialog-backdrop board-share-dialog-backdrop">
       <section className="board-share-dialog compact" role="dialog" aria-modal="true" aria-labelledby="share-dialog-title">
@@ -158,6 +158,19 @@ function ShareDialog({ status, message, onClose, onShare }: { status: "idle" | "
             {message}
           </p>
         )}
+
+        <label className="board-share-footer-option">
+          <input
+            type="checkbox"
+            checked={includeFooter}
+            disabled={status === "preparing" || status === "success"}
+            onChange={(event) => onIncludeFooterChange(event.currentTarget.checked)}
+          />
+          <span>
+            <strong>하단 바 포함</strong>
+            <small>보드 이름과 is2u.today를 사진 아래에 함께 남겨요</small>
+          </span>
+        </label>
         
         <div className="form-actions">
           {status === "idle" && (
@@ -253,6 +266,7 @@ export function BoardView({ boardId }: { boardId: string }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "preparing" | "success" | "error">("idle");
+  const [includeExportFooter, setIncludeExportFooter] = useState(true);
   const [confirmDetach, setConfirmDetach] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -1344,6 +1358,7 @@ export function BoardView({ boardId }: { boardId: string }) {
   async function exportBoard() {
     const capture = shareCapture.current;
     if (!payload?.board || !capture) return;
+    const exportHeight = BOARD_HEIGHT + (includeExportFooter ? BOARD_EXPORT_FOOTER_HEIGHT : 0);
     setShareStatus("preparing");
     setShareMessage("보드를 사진으로 준비하고 있어요");
 
@@ -1353,7 +1368,7 @@ export function BoardView({ boardId }: { boardId: string }) {
       const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(capture, {
         width: BOARD_WIDTH,
-        height: BOARD_HEIGHT + BOARD_EXPORT_FOOTER_HEIGHT,
+        height: exportHeight,
         scale: 2,
         backgroundColor: "#caa16d",
         useCORS: true,
@@ -1361,7 +1376,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         scrollX: 0,
         scrollY: 0,
         windowWidth: BOARD_WIDTH,
-        windowHeight: BOARD_HEIGHT + BOARD_EXPORT_FOOTER_HEIGHT,
+        windowHeight: exportHeight,
       });
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("blob_generation_failed");
@@ -1419,7 +1434,7 @@ export function BoardView({ boardId }: { boardId: string }) {
         <small>{payload.owner.displayName}의 보드 · {items.length}개의 조각</small>
       </div>
       <div className="board-detail-actions">
-        <Button variant="quiet" onClick={() => { setShareOpen(true); setShareStatus("idle"); setShareMessage(""); }}>공유</Button>
+        <Button variant="quiet" onClick={() => { setIncludeExportFooter(true); setShareOpen(true); setShareStatus("idle"); setShareMessage(""); }}>공유</Button>
         {payload.canEdit ? (
           <Button
             aria-pressed={editMode}
@@ -1486,18 +1501,20 @@ export function BoardView({ boardId }: { boardId: string }) {
       </div>}
     </div>
     {shareOpen && (
-      <div className="board-share-capture" aria-hidden="true" ref={shareCapture}>
+      <div className={`board-share-capture${includeExportFooter ? "" : " without-footer"}`} aria-hidden="true" ref={shareCapture}>
         <BoardArtwork items={items.filter((item) => !item.id.startsWith("upload-"))} threads={threads} assetOverrides={assetOverrides} mode="export" />
-        <footer className="board-export-footer">
-          <div className="export-footer-title">{payload?.board.title}</div>
-          <div className="export-footer-brand">
-            <span>그대로 멈춰라</span>
-            <small>is2u.today</small>
-          </div>
-        </footer>
+        {includeExportFooter && (
+          <footer className="board-export-footer">
+            <div className="export-footer-title">{payload?.board.title}</div>
+            <div className="export-footer-brand">
+              <span>그대로 멈춰라</span>
+              <small>is2u.today</small>
+            </div>
+          </footer>
+        )}
       </div>
     )}
-    {picker && <MemoryPicker boardId={boardId} mode={picker} existingMemoryIds={existingMemoryIds} onClose={() => setPicker(null)} onDone={load} />}{noteOpen && <NoteDialog boardId={boardId} onClose={() => setNoteOpen(false)} onDone={load} />}{shareOpen && <ShareDialog status={shareStatus} message={shareMessage} onClose={() => setShareOpen(false)} onShare={() => void exportBoard()} />}
+    {picker && <MemoryPicker boardId={boardId} mode={picker} existingMemoryIds={existingMemoryIds} onClose={() => setPicker(null)} onDone={load} />}{noteOpen && <NoteDialog boardId={boardId} onClose={() => setNoteOpen(false)} onDone={load} />}{shareOpen && <ShareDialog status={shareStatus} message={shareMessage} includeFooter={includeExportFooter} onIncludeFooterChange={setIncludeExportFooter} onClose={() => setShareOpen(false)} onShare={() => void exportBoard()} />}
     {confirmDetach && <PaperConfirmDialog title="이 조각을 보드에서 떼어낼까요" description="보관함의 원본 추억은 그대로 남아 있어요" cancelLabel="그대로 둘게요" confirmLabel="보드에서 떼기" busy={saveState === "saving"} onCancel={() => setConfirmDetach(null)} onConfirm={() => void detach()} />}
   </div>;
 }

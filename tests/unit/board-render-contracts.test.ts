@@ -29,7 +29,7 @@ describe("board rendering contracts", () => {
     expect(renderer).toContain("export function BoardArtwork");
     expect(view.match(/<BoardArtwork/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(view).toContain('mode="export"');
-    expect(view).toContain('className="board-share-capture"');
+    expect(view).toContain("board-share-capture${includeExportFooter");
     expect(view).toContain("board-export-footer");
   });
 
@@ -109,6 +109,13 @@ describe("board rendering contracts", () => {
 
     expect(renderer).toContain('className="board-piece-surface"');
     expect(renderer).toContain('className="board-selection-outline"');
+    expect(renderer).toContain('mode === "export" && style.shadow !== "none" && item.elementType !== "sticker"');
+    expect(renderer).toContain("board-export-piece-shadow");
+    expect(styles).toMatch(/\.board-export-piece-shadow\s*\{[^}]*background:[^}]*transform:/s);
+    expect(styles).toMatch(/\.board-piece\.shadow-firm\s*>\s*\.board-export-piece-shadow/);
+    expect(styles).toMatch(/\.board-piece\.piece-image\s*>\s*\.board-export-piece-shadow/);
+    expect(styles).toMatch(/\.board-share-capture\s+\.board-object-ground\s*\{\s*display:\s*none/);
+    expect(styles).toMatch(/\.board-share-capture\s+\.board-piece\.piece-sticker\.shadow-none\s+\.board-free-sticker\s*\{\s*text-shadow:\s*none/);
     expect(styles).toMatch(/\.board-piece\.shadow-firm\s*>\s*\.board-piece-surface/);
     expect(styles).toMatch(/\.board-piece\.shadow-none\s*>\s*\.board-piece-surface/);
     expect(styles).toMatch(/\.board-piece\.piece-note\.shadow-soft\s+\.board-free-note/);
@@ -122,6 +129,24 @@ describe("board rendering contracts", () => {
     expect(surface).toBeGreaterThan(-1);
     expect(resizeHandle).toBeGreaterThan(surface);
     expect(rotateHandle).toBeGreaterThan(surface);
+  });
+
+  it("makes the export footer optional and checked by default", async () => {
+    const [view, styles] = await Promise.all([
+      readFile(VIEW_PATH, "utf8"),
+      readFile(STYLES_PATH, "utf8"),
+    ]);
+
+    expect(view).toContain("const [includeExportFooter, setIncludeExportFooter] = useState(true)");
+    expect(view).toContain("setIncludeExportFooter(true)");
+    expect(view).toContain('type="checkbox"');
+    expect(view).toContain("checked={includeFooter}");
+    expect(view).toContain("onIncludeFooterChange(event.currentTarget.checked)");
+    expect(view).toContain("const exportHeight = BOARD_HEIGHT + (includeExportFooter ? BOARD_EXPORT_FOOTER_HEIGHT : 0)");
+    expect(view).toContain("height: exportHeight");
+    expect(view).toContain("windowHeight: exportHeight");
+    expect(view).toContain("{includeExportFooter && (");
+    expect(styles).toContain(".board-share-capture.without-footer { height: 1400px; }");
   });
 });
 

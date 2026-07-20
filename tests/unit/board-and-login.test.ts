@@ -149,7 +149,12 @@ describe("login, interval inputs and memory boards", () => {
     expect(view).toContain("scale: 2");
     expect(view).toContain("await document.fonts.ready");
     expect(view).toContain("const capture = shareCapture.current;");
-    expect(view).toContain("height: BOARD_HEIGHT + BOARD_EXPORT_FOOTER_HEIGHT");
+    expect(view).toContain("const exportHeight = BOARD_HEIGHT + (includeExportFooter ? BOARD_EXPORT_FOOTER_HEIGHT : 0)");
+    expect(view).toContain("height: exportHeight");
+    expect(view).toContain("windowHeight: exportHeight");
+    expect(view).toContain('type="checkbox"');
+    expect(view).toContain("checked={includeFooter}");
+    expect(view).toContain("{includeExportFooter && (");
     expect(view).toContain("board-export-footer");
     expect(view).toContain("<BoardArtwork");
     expect(list).toContain("<ReadOnlyBoardPreview");
@@ -160,8 +165,11 @@ describe("login, interval inputs and memory boards", () => {
     expect(styles).toContain("flex: 0 0 1400px");
     expect(styles).toContain("font-family: var(--font-logo)");
     expect(renderer).toContain('className="board-piece-surface"');
+    expect(renderer).toContain("board-export-piece-shadow");
+    expect(renderer).toContain('mode === "export" && style.shadow !== "none" && item.elementType !== "sticker"');
     expect(renderer).toContain('className="board-object-ground"');
     expect(styles).toContain(".board-piece.shadow-firm > .board-piece-surface");
+    expect(styles).toContain(".board-export-piece-shadow");
     expect(boardRoute).toContain("loadBoardArtwork");
     expect(boardContent).toContain("requireVisibleBoard");
     expect(mediaContent).toContain("canAccessMemory");
