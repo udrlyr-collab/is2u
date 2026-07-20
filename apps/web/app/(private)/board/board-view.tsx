@@ -291,12 +291,13 @@ export function BoardView({ boardId }: { boardId: string }) {
   function closeBundle() { setOpenGroupId(null); window.history.replaceState(null, "", `/board/${boardId}`); }
 
   async function exportBoard() {
-    if (!payload?.board || !shareCapture.current) return; setShareBusy(true);
+    const capture = shareCapture.current?.querySelector<HTMLElement>(".board-artwork");
+    if (!payload?.board || !capture) return; setShareBusy(true);
     try {
       await document.fonts.ready;
-      await Promise.all([...shareCapture.current.querySelectorAll("img")].map((image) => image.complete ? image.decode().catch(() => undefined) : new Promise<void>((resolve) => { image.addEventListener("load", () => resolve(), { once: true }); image.addEventListener("error", () => resolve(), { once: true }); })));
+      await Promise.all([...capture.querySelectorAll("img")].map((image) => image.complete ? image.decode().catch(() => undefined) : new Promise<void>((resolve) => { image.addEventListener("load", () => resolve(), { once: true }); image.addEventListener("error", () => resolve(), { once: true }); })));
       const { toBlob } = await import("html-to-image");
-      const blob = await toBlob(shareCapture.current, { width: BOARD_WIDTH, height: BOARD_HEIGHT, pixelRatio: 2, cacheBust: true, backgroundColor: "#caa16d", skipFonts: false });
+      const blob = await toBlob(capture, { width: BOARD_WIDTH, height: BOARD_HEIGHT, pixelRatio: 2, cacheBust: true, backgroundColor: "#caa16d", skipFonts: false });
       if (!blob) throw new Error("capture failed");
       const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
       const filename = `${payload.board.title.replace(/[\\/:*?"<>|]/g, "-")}-${date}.png`; const file = new File([blob], filename, { type: "image/png" });
