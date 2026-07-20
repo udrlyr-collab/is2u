@@ -1213,7 +1213,7 @@ h3 { margin-bottom: var(--space-2); }
 .board-piece.selected, .board-piece.multi-selected { outline: 2px solid rgb(255 248 223 / 0.88); outline-offset: 4px; filter: drop-shadow(2px 4px 0 rgb(70 50 40 / 0.16)); }
 .board-selection-tape { position: absolute; z-index: 60; top: -13px; right: 12px; min-width: 34px; height: 23px; display: grid; place-items: center; background: #f1d58a; color: #604433; font-size: 12px; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.14); transform: rotate(2deg); pointer-events: none; }
 
-.piece-resize-handle, .piece-rotate-handle { position: absolute; z-index: 90; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: grab; }
+.piece-resize-handle, .piece-rotate-handle { position: absolute; z-index: 90; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: grab; scale: var(--board-handle-inverse-scale, 1); }
 .piece-resize-handle { right: -24px; bottom: -24px; }
 .piece-resize-handle::after { content: ""; position: absolute; right: 9px; bottom: 9px; width: 11px; height: 11px; background: #f1d58a; border: 2px solid #75543d; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.18); transform: rotate(3deg); }
 .piece-rotate-handle { top: -51px; left: calc(50% - 22px); }
@@ -1222,7 +1222,7 @@ h3 { margin-bottom: var(--space-2); }
 
 .rope.mode-linking .rope-cord { stroke-width: 4; stroke-dasharray: 1 0; }
 .rope.mode-linking .rope-shadow { stroke-width: 7; }
-.rope-direct-handle, .rope-edit-handle { position: absolute; translate: -50% -50%; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; touch-action: none; }
+.rope-direct-handle, .rope-edit-handle { position: absolute; translate: -50% -50%; scale: var(--board-handle-inverse-scale, 1); width: 44px; height: 44px; padding: 0; border: 0; background: transparent; touch-action: none; }
 .rope-direct-handle::after { content: ""; position: absolute; inset: 14px; border-radius: 50%; background: #8b684d; border: 2px solid #f1d58a; box-shadow: 1px 2px 0 rgb(70 50 40 / 0.18); }
 .rope-handle-whole::after { inset: 12px; background: #f1d58a; border-color: #77543d; }
 .rope.mode-linking.selected .rope-cord, .rope.mode-hanging.selected .rope-cord { filter: drop-shadow(0 0 2px rgb(255 248 223 / 0.9)); }
