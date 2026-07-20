@@ -338,7 +338,7 @@ h3 { margin-bottom: var(--space-2); }
 .appointment-menu a, .appointment-menu button { min-height: 44px; display: flex; align-items: center; width: 100%; padding: 0.55rem 0.7rem; border: 0; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; }
 .appointment-menu a:hover, .appointment-menu button:hover, .appointment-menu a:focus-visible, .appointment-menu button:focus-visible { background: rgb(255 253 249 / 0.75); }
 .appointment-menu .menu-danger { color: var(--danger); border-top: 1px dashed var(--border); }
-.paper-dialog-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(48 43 40 / 0.42); }
+.paper-dialog-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(48 43 40 / 0.42); }
 .paper-dialog { position: relative; width: min(100%, 26rem); padding: 1.8rem 1.25rem 1.2rem; background: #fff8d9; box-shadow: 4px 5px 0 rgb(48 43 40 / 0.22); transform: rotate(-0.35deg); }
 .paper-dialog h2 { margin-bottom: 0.55rem; }
 .paper-dialog > p:not(.paper-label) { color: var(--muted-foreground); font-size: 0.86rem; }
