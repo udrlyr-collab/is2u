@@ -14,74 +14,72 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Probe public Kaggle dataset schema and coverage
+      - name: Search Kaggle for missing-symbol intraday datasets
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p probe
           python - <<'PY'
-          import csv, json, os, urllib.request, zipfile
-          from collections import deque
+          import json, time, urllib.parse, urllib.request
 
-          url = 'https://www.kaggle.com/api/v1/datasets/download/manognap2505/equiml'
-          out = 'probe/equiml.zip'
-          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-          with urllib.request.urlopen(req, timeout=180) as r, open(out, 'wb') as f:
-              while True:
-                  chunk = r.read(1024 * 1024)
-                  if not chunk:
-                      break
-                  f.write(chunk)
+          headers = {'User-Agent': 'Mozilla/5.0'}
+          queries = [
+              '1 minute stock AAPL SPY QQQ',
+              'historical intraday US stocks 1 minute',
+              'SPY QQQ minute data',
+              'AAPL AMD TSLA 1 minute',
+              'US equities minute OHLCV 2023 2024',
+              'intraday stock data 5 minute',
+          ]
+          required = {'AAPL','AMD','TSLA','SPY','QQQ'}
+          refs = {}
+          search_raw = {}
+          for q in queries:
+              url = 'https://www.kaggle.com/api/v1/datasets/list?' + urllib.parse.urlencode({'search': q, 'page': 1})
+              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
+                  rows = json.load(r)
+              search_raw[q] = [{'ref': x.get('ref'), 'title': x.get('title'), 'totalBytes': x.get('totalBytes'), 'lastUpdated': x.get('lastUpdated')} for x in rows[:30]]
+              for x in rows[:30]:
+                  if x.get('ref'):
+                      refs[x['ref']] = x
 
-          report = {'archive_bytes': os.path.getsize(out), 'files': {}}
-          symbols = ['AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA']
-          with zipfile.ZipFile(out) as z:
-              for sym in symbols:
-                  name = f'train/{sym}_1min.csv'
-                  with z.open(name) as raw:
-                      import io
-                      text = io.TextIOWrapper(raw, encoding='utf-8-sig', newline='')
-                      reader = csv.DictReader(text)
-                      fields = reader.fieldnames or []
-                      candidates = [c for c in fields if c.lower() in {'datetime','date','timestamp','time'}]
-                      if not candidates:
-                          raise RuntimeError(f'No timestamp column in {name}: {fields}')
-                      dt_col = candidates[0]
-                      first = []
-                      last = deque(maxlen=3)
-                      count = 0
-                      min_dt = None
-                      max_dt = None
-                      by_year = {}
-                      for row in reader:
-                          count += 1
-                          if len(first) < 3:
-                              first.append(row)
-                          last.append(row)
-                          dt = row.get(dt_col, '')
-                          if min_dt is None or dt < min_dt: min_dt = dt
-                          if max_dt is None or dt > max_dt: max_dt = dt
-                          year = dt[:4]
-                          by_year[year] = by_year.get(year, 0) + 1
-                      report['files'][sym] = {
-                          'path': name,
-                          'fields': fields,
-                          'timestamp_column': dt_col,
-                          'rows': count,
-                          'min_timestamp': min_dt,
-                          'max_timestamp': max_dt,
-                          'rows_by_year': by_year,
-                          'first_rows': first,
-                          'last_rows': list(last),
-                      }
-          with open('probe/report.json', 'w') as f:
+          candidates = []
+          for i, (ref, base) in enumerate(list(refs.items())[:120]):
+              try:
+                  url = 'https://www.kaggle.com/api/v1/datasets/view/' + ref
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
+                      meta = json.load(r)
+                  files = meta.get('resources') or meta.get('files') or []
+                  names = [str(f.get('path') or f.get('name') or '') for f in files]
+                  hay = (' '.join(names) + ' ' + str(meta.get('title','')) + ' ' + str(meta.get('subtitle','')) + ' ' + str(meta.get('description',''))).upper()
+                  hits = sorted([s for s in required if s in hay])
+                  minuteish = any(k in hay for k in ['1MIN','1-MIN','1 MIN','5MIN','5-MIN','5 MIN','INTRADAY','MINUTE'])
+                  if hits or minuteish:
+                      candidates.append({
+                          'ref': ref,
+                          'title': meta.get('title') or base.get('title'),
+                          'subtitle': meta.get('subtitle'),
+                          'totalBytes': meta.get('totalBytes') or base.get('totalBytes'),
+                          'lastUpdated': meta.get('lastUpdated') or base.get('lastUpdated'),
+                          'hits': hits,
+                          'minuteish': minuteish,
+                          'files': names[:300],
+                          'description': str(meta.get('description',''))[:1500],
+                      })
+              except Exception as e:
+                  candidates.append({'ref': ref, 'error': repr(e)})
+              time.sleep(0.05)
+
+          candidates.sort(key=lambda x: (len(x.get('hits',[])), bool(x.get('minuteish'))), reverse=True)
+          report = {'queries': queries, 'search_results': search_raw, 'candidates': candidates[:80]}
+          with open('probe/kaggle_search.json', 'w') as f:
               json.dump(report, f, indent=2)
-          print(json.dumps(report, indent=2)[:50000])
+          print(json.dumps(report, indent=2)[:100000])
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: orb-data-probe
-          path: probe/report.json
+          name: orb-data-search
+          path: probe/kaggle_search.json
           if-no-files-found: warn
           retention-days: 1
