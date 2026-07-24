@@ -11,75 +11,55 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Search Kaggle for missing-symbol intraday datasets
+      - name: Probe candidate Kaggle dataset references
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p probe
           python - <<'PY'
-          import json, time, urllib.parse, urllib.request
+          import json, urllib.parse, urllib.request
+          from urllib.error import HTTPError
 
-          headers = {'User-Agent': 'Mozilla/5.0'}
-          queries = [
-              '1 minute stock AAPL SPY QQQ',
-              'historical intraday US stocks 1 minute',
-              'SPY QQQ minute data',
-              'AAPL AMD TSLA 1 minute',
-              'US equities minute OHLCV 2023 2024',
-              'intraday stock data 5 minute',
+          headers={'User-Agent':'Mozilla/5.0'}
+          refs=[
+            'cesarecastro/cleaned-spy-and-qqq-1-minute-data',
+            'yug201/aapl-price-dataset-all-timeframe',
+            'yug201/tsla-price-dataset-all-timeframe',
+            'yug201/amd-price-dataset-all-timeframe',
+            'yug201/spy-price-dataset-all-timeframe',
+            'yug201/qqq-price-dataset-all-timeframe',
+            'yug201/meta-price-dataset-all-timeframe',
+            'yug201/googl-price-dataset-all-timeframe',
           ]
-          required = {'AAPL','AMD','TSLA','SPY','QQQ'}
-          refs = {}
-          search_raw = {}
-          for q in queries:
-              url = 'https://www.kaggle.com/api/v1/datasets/list?' + urllib.parse.urlencode({'search': q, 'page': 1})
-              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
-                  rows = json.load(r)
-              search_raw[q] = [{'ref': x.get('ref'), 'title': x.get('title'), 'totalBytes': x.get('totalBytes'), 'lastUpdated': x.get('lastUpdated')} for x in rows[:30]]
-              for x in rows[:30]:
-                  if x.get('ref'):
-                      refs[x['ref']] = x
-
-          candidates = []
-          for i, (ref, base) in enumerate(list(refs.items())[:120]):
-              try:
-                  url = 'https://www.kaggle.com/api/v1/datasets/view/' + ref
-                  with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
-                      meta = json.load(r)
-                  files = meta.get('resources') or meta.get('files') or []
-                  names = [str(f.get('path') or f.get('name') or '') for f in files]
-                  hay = (' '.join(names) + ' ' + str(meta.get('title','')) + ' ' + str(meta.get('subtitle','')) + ' ' + str(meta.get('description',''))).upper()
-                  hits = sorted([s for s in required if s in hay])
-                  minuteish = any(k in hay for k in ['1MIN','1-MIN','1 MIN','5MIN','5-MIN','5 MIN','INTRADAY','MINUTE'])
-                  if hits or minuteish:
-                      candidates.append({
-                          'ref': ref,
-                          'title': meta.get('title') or base.get('title'),
-                          'subtitle': meta.get('subtitle'),
-                          'totalBytes': meta.get('totalBytes') or base.get('totalBytes'),
-                          'lastUpdated': meta.get('lastUpdated') or base.get('lastUpdated'),
-                          'hits': hits,
-                          'minuteish': minuteish,
-                          'files': names[:300],
-                          'description': str(meta.get('description',''))[:1500],
-                      })
-              except Exception as e:
-                  candidates.append({'ref': ref, 'error': repr(e)})
-              time.sleep(0.05)
-
-          candidates.sort(key=lambda x: (len(x.get('hits',[])), bool(x.get('minuteish'))), reverse=True)
-          report = {'queries': queries, 'search_results': search_raw, 'candidates': candidates[:80]}
-          with open('probe/kaggle_search.json', 'w') as f:
-              json.dump(report, f, indent=2)
-          print(json.dumps(report, indent=2)[:100000])
+          out={'direct':{},'search':{}}
+          for ref in refs:
+            try:
+              url='https://www.kaggle.com/api/v1/datasets/view/'+ref
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=60) as r:
+                m=json.load(r)
+              summary={k:m.get(k) for k in ['ref','title','subtitle','description','totalBytes','lastUpdated','licenseName','usabilityRating']}
+              summary['keys']=sorted(m.keys())
+              for key in ['resources','files','datasetFiles']:
+                if key in m:
+                  summary[key]=m[key]
+              out['direct'][ref]=summary
+            except Exception as e:
+              out['direct'][ref]={'error':repr(e)}
+          for q in ['amd price dataset all timeframe yug201','spy price dataset all timeframe yug201','qqq price dataset all timeframe yug201','AMD 1 minute stock data','US stocks 1 minute AAPL AMD TSLA SPY QQQ']:
+            url='https://www.kaggle.com/api/v1/datasets/list?'+urllib.parse.urlencode({'search':q,'page':1})
+            with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=60) as r:
+              rows=json.load(r)
+            out['search'][q]=[{k:x.get(k) for k in ['ref','title','subtitle','totalBytes','lastUpdated']} for x in rows[:50]]
+          with open('probe/candidates.json','w') as f: json.dump(out,f,indent=2)
+          print(json.dumps(out,indent=2)[:120000])
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: orb-data-search
-          path: probe/kaggle_search.json
+          name: orb-data-candidates
+          path: probe/candidates.json
           if-no-files-found: warn
           retention-days: 1
