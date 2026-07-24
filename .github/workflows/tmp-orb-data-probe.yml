@@ -1,4 +1,4 @@
-name: Temporary ORB data probe
+name: Temporary ORB data transfer
 
 on:
   pull_request:
@@ -9,73 +9,37 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  transfer:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Download and inspect candidate intraday archives
+      - name: Download public EQUIML minute-data archive
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p probe
+          mkdir -p transfer
           python - <<'PY'
-          import csv, io, json, os, re, urllib.request, zipfile
-          from collections import deque
-
-          refs=[
-            'cesarecastro/cleaned-spy-and-qqq-1-minute-data',
-            'yug201/aapl-price-dataset-all-timeframe',
-            'yug201/tsla-price-dataset-all-timeframe',
-          ]
-          headers={'User-Agent':'Mozilla/5.0'}
-          report={}
-          for ref in refs:
-            slug=ref.split('/')[-1]
-            path=f'probe/{slug}.zip'
-            url='https://www.kaggle.com/api/v1/datasets/download/'+ref
-            req=urllib.request.Request(url,headers=headers)
-            with urllib.request.urlopen(req,timeout=300) as r, open(path,'wb') as f:
+          import hashlib, json, os, urllib.request
+          url='https://www.kaggle.com/api/v1/datasets/download/manognap2505/equiml'
+          out='transfer/equiml.zip'
+          req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+          h=hashlib.sha256()
+          with urllib.request.urlopen(req,timeout=300) as r, open(out,'wb') as f:
               while True:
-                b=r.read(1024*1024)
-                if not b: break
-                f.write(b)
-            info={'archive_bytes':os.path.getsize(path),'members':[],'csv_probes':{}}
-            with zipfile.ZipFile(path) as z:
-              info['members']=[{'name':x.filename,'bytes':x.file_size} for x in z.infolist()]
-              for x in z.infolist():
-                n=x.filename.lower()
-                if not n.endswith('.csv'): continue
-                if not any(k in n for k in ['1m','1_min','1min','minute','spy','qqq']): continue
-                if x.file_size>250_000_000: continue
-                try:
-                  with z.open(x) as raw:
-                    text=io.TextIOWrapper(raw,encoding='utf-8-sig',errors='replace',newline='')
-                    reader=csv.reader(text)
-                    header=next(reader)
-                    first=[]; last=deque(maxlen=3); count=0
-                    date_idx=next((i for i,c in enumerate(header) if c.strip().lower() in {'date','datetime','timestamp','time'}),0)
-                    min_dt=max_dt=None; years={}
-                    for row in reader:
-                      if not row: continue
-                      count+=1
-                      if len(first)<3: first.append(row)
-                      last.append(row)
-                      dt=row[date_idx] if date_idx<len(row) else ''
-                      if min_dt is None or dt<min_dt: min_dt=dt
-                      if max_dt is None or dt>max_dt: max_dt=dt
-                      y=dt[:4]; years[y]=years.get(y,0)+1
-                    info['csv_probes'][x.filename]={'header':header,'rows':count,'min':min_dt,'max':max_dt,'years':years,'first':first,'last':list(last)}
-                except Exception as e:
-                  info['csv_probes'][x.filename]={'error':repr(e)}
-            report[ref]=info
-          with open('probe/archive_probe.json','w') as f: json.dump(report,f,indent=2)
-          print(json.dumps(report,indent=2)[:150000])
+                  b=r.read(1024*1024)
+                  if not b: break
+                  h.update(b); f.write(b)
+          meta={'source_url':url,'bytes':os.path.getsize(out),'sha256':h.hexdigest()}
+          with open('transfer/source.json','w') as f: json.dump(meta,f,indent=2)
+          print(meta)
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: orb-archive-probe
-          path: probe/archive_probe.json
-          if-no-files-found: warn
+          name: equiml-source-archive
+          path: |
+            transfer/equiml.zip
+            transfer/source.json
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 1
