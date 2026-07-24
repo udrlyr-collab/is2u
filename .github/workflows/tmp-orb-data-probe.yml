@@ -11,32 +11,72 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Probe public Kaggle dataset
+      - name: Probe public Kaggle dataset schema and coverage
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p probe
           python - <<'PY'
-          import json, os, urllib.request, zipfile
+          import csv, json, os, urllib.request, zipfile
+          from collections import deque
+
           url = 'https://www.kaggle.com/api/v1/datasets/download/manognap2505/equiml'
           out = 'probe/equiml.zip'
           req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-          with urllib.request.urlopen(req, timeout=120) as r, open(out, 'wb') as f:
+          with urllib.request.urlopen(req, timeout=180) as r, open(out, 'wb') as f:
               while True:
                   chunk = r.read(1024 * 1024)
                   if not chunk:
                       break
                   f.write(chunk)
-          report = {'bytes': os.path.getsize(out), 'files': []}
+
+          report = {'archive_bytes': os.path.getsize(out), 'files': {}}
+          symbols = ['AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA']
           with zipfile.ZipFile(out) as z:
-              for info in z.infolist():
-                  report['files'].append({'name': info.filename, 'bytes': info.file_size})
+              for sym in symbols:
+                  name = f'train/{sym}_1min.csv'
+                  with z.open(name) as raw:
+                      import io
+                      text = io.TextIOWrapper(raw, encoding='utf-8-sig', newline='')
+                      reader = csv.DictReader(text)
+                      fields = reader.fieldnames or []
+                      candidates = [c for c in fields if c.lower() in {'datetime','date','timestamp','time'}]
+                      if not candidates:
+                          raise RuntimeError(f'No timestamp column in {name}: {fields}')
+                      dt_col = candidates[0]
+                      first = []
+                      last = deque(maxlen=3)
+                      count = 0
+                      min_dt = None
+                      max_dt = None
+                      by_year = {}
+                      for row in reader:
+                          count += 1
+                          if len(first) < 3:
+                              first.append(row)
+                          last.append(row)
+                          dt = row.get(dt_col, '')
+                          if min_dt is None or dt < min_dt: min_dt = dt
+                          if max_dt is None or dt > max_dt: max_dt = dt
+                          year = dt[:4]
+                          by_year[year] = by_year.get(year, 0) + 1
+                      report['files'][sym] = {
+                          'path': name,
+                          'fields': fields,
+                          'timestamp_column': dt_col,
+                          'rows': count,
+                          'min_timestamp': min_dt,
+                          'max_timestamp': max_dt,
+                          'rows_by_year': by_year,
+                          'first_rows': first,
+                          'last_rows': list(last),
+                      }
           with open('probe/report.json', 'w') as f:
               json.dump(report, f, indent=2)
-          print(json.dumps(report, indent=2)[:20000])
+          print(json.dumps(report, indent=2)[:50000])
           PY
       - uses: actions/upload-artifact@v4
         if: always()
