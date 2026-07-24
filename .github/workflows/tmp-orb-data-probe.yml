@@ -1,0 +1,47 @@
+name: Temporary ORB data probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe public Kaggle dataset
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p probe
+          python - <<'PY'
+          import json, os, urllib.request, zipfile
+          url = 'https://www.kaggle.com/api/v1/datasets/download/manognap2505/equiml'
+          out = 'probe/equiml.zip'
+          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+          with urllib.request.urlopen(req, timeout=120) as r, open(out, 'wb') as f:
+              while True:
+                  chunk = r.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  f.write(chunk)
+          report = {'bytes': os.path.getsize(out), 'files': []}
+          with zipfile.ZipFile(out) as z:
+              for info in z.infolist():
+                  report['files'].append({'name': info.filename, 'bytes': info.file_size})
+          with open('probe/report.json', 'w') as f:
+              json.dump(report, f, indent=2)
+          print(json.dumps(report, indent=2)[:20000])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orb-data-probe
+          path: probe/report.json
+          if-no-files-found: warn
+          retention-days: 1
